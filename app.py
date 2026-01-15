@@ -121,7 +121,8 @@ class ScorerEngine:
     def __init__(self):
         if INTERNAL_API_KEY:
             genai.configure(api_key=INTERNAL_API_KEY)
-            self.model = genai.GenerativeModel('gemini-pro')
+            # --- 修复点：将 gemini-pro 改为 gemini-1.5-flash ---
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
 
     def read_docx_content(self, file_obj):
         """增强版 Word 读取：同时读取段落和表格"""
