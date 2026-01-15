@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components  # 新增组件库用于触发JS
 import pandas as pd
 import numpy as np
 import google.generativeai as genai
@@ -20,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. UI 强制浅色模式 (深度修复版) ---
+# --- 2. UI 强制浅色模式 (深度修复版 + 打印优化) ---
 st.markdown("""
     <style>
         /* A. 全局容器强制白底黑字 */
@@ -109,6 +110,33 @@ st.markdown("""
             background-color: #ffffff !important;
             color: #31333F !important;
         }
+
+        /* H. 打印模式专用样式 (导出PDF时生效) */
+        @media print {
+            /* 隐藏侧边栏 */
+            [data-testid="stSidebar"] {
+                display: none !important;
+            }
+            /* 隐藏顶部导航 */
+            header[data-testid="stHeader"] {
+                display: none !important;
+            }
+            /* 隐藏所有按钮和上传框 */
+            button, [data-testid="stFileUploaderDropzone"], .stButton {
+                display: none !important;
+            }
+            /* 调整主内容宽度 */
+            [data-testid="stAppViewContainer"] {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+            }
+            /* 确保图表和表格显示完整 */
+            .main .block-container {
+                max-width: 100% !important;
+                padding: 1rem !important;
+            }
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -121,7 +149,6 @@ class ScorerEngine:
     def __init__(self):
         if INTERNAL_API_KEY:
             genai.configure(api_key=INTERNAL_API_KEY)
-            # 初始化时不绑定特定模型，在调用时动态匹配
 
     def read_docx_content(self, file_obj):
         """增强版 Word 读取：同时读取段落和表格"""
@@ -135,7 +162,7 @@ class ScorerEngine:
                 if para.text.strip():
                     full_text.append(para.text.strip())
             
-            # 2. 读取表格 (很多新闻稿在表格里)
+            # 2. 读取表格
             for table in doc.tables:
                 for row in table.rows:
                     for cell in row.cells:
@@ -148,11 +175,9 @@ class ScorerEngine:
             return f"Error: {str(e)}"
 
     def fetch_url_content(self, url):
-        """尝试获取 URL 内容，失败则返回空字符串"""
         if not url or pd.isna(url): return ""
         if not str(url).startswith('http'): return ""
 
-        # 1. 尝试 Jina (效果最好)
         try:
             jina_url = f"https://r.jina.ai/{url}"
             response = requests.get(jina_url, timeout=5)
@@ -160,7 +185,6 @@ class ScorerEngine:
                 return response.text[:10000]
         except: pass 
 
-        # 2. 尝试 Requests (兜底)
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
             response = requests.get(url, headers=headers, timeout=5)
@@ -170,7 +194,6 @@ class ScorerEngine:
                 if len(text) > 50:
                     return text[:10000]
         except: pass
-        
         return ""
 
     def calculate_volume_quality(self, views, interactions):
@@ -182,7 +205,6 @@ class ScorerEngine:
                 return float(x) if x else 0.0
             v = clean_num(views)
             i = clean_num(interactions)
-            # 简单的声量计算逻辑
             raw_score = math.log10(v + i * 5 + 1) * 1.5
             return min(10.0, round(raw_score, 1))
         except: return 0.0
@@ -201,7 +223,6 @@ class ScorerEngine:
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
         if not INTERNAL_API_KEY: return 0, 0, 0, "API Key Error: Key is missing"
         
-        # 容错：默认值
         safe_km = key_message if key_message else "文章主题及核心观点"
         safe_desc = project_desc if project_desc else "一般性行业项目"
 
@@ -223,46 +244,61 @@ class ScorerEngine:
         3. audience_precision_score: 考虑到媒体和受众模式，受众精准度如何？
 
         【输出格式】
-        仅返回 JSON 字符串:
+        仅返回 JSON 字符串，不要包含 Markdown 格式:
         {{"km_score": 8, "acquisition_score": 7, "audience_precision_score": 9}}
         """
         
-        # --- 自动寻路逻辑：尝试多个模型版本直到成功 ---
+        # --- 自动寻路逻辑 ---
         candidate_models = [
-            'gemini-2.0-flash',                 # 稳定且快，首选
-            'gemini-2.0-flash-lite-preview-02-05', # 极快，备选
-            'gemini-2.5-flash',                 # 新版 Flash
+            'gemini-2.0-flash', 
+            'gemini-2.0-flash-lite-preview-02-05',
+            'gemini-2.5-flash',
             'gemini-2.0-flash-exp',
-            'gemini-flash-latest'               # 自动指向最新 Flash
+            'gemini-flash-latest'
         ]
         
+        # --- JSON 提取助手 ---
+        def extract_json(text):
+            try: return json.loads(text)
+            except: pass
+            try:
+                clean = text.replace('```json', '').replace('```', '').strip()
+                return json.loads(clean)
+            except: pass
+            try:
+                match = re.search(r'\{.*\}', text, re.DOTALL)
+                if match: return json.loads(match.group(0))
+            except: pass
+            return None
+
         last_error = None
         
         for model_name in candidate_models:
             try:
                 model = genai.GenerativeModel(model_name)
                 response = model.generate_content(prompt)
-                clean_text = response.text.replace('```json', '').replace('```', '').strip()
-                data = json.loads(clean_text)
-                return (
-                    data.get('km_score', 0), 
-                    data.get('acquisition_score', 0), 
-                    data.get('audience_precision_score', 0), 
-                    "Success"
-                )
+                data = extract_json(response.text)
+                
+                if data:
+                    return (
+                        data.get('km_score', 0), 
+                        data.get('acquisition_score', 0), 
+                        data.get('audience_precision_score', 0), 
+                        "Success"
+                    )
+                else:
+                    raise ValueError(f"JSON Parse Failed: {response.text[:50]}...")
             except Exception as e:
                 last_error = e
-                # 继续尝试下一个模型
+                if "429" in str(e): time.sleep(2)
                 continue
 
-        # 如果所有模型都失败
         error_msg = f"AI Error: All models failed. Last error: {str(last_error)}"
         return 0, 0, 0, error_msg
 
 # --- 4. 侧边栏 (Sidebar) ---
 with st.sidebar:
     st.header("⚙️ 系统配置")
-    
     st.subheader("📋 项目基础信息")
     project_key_message = st.text_input("核心信息 (Key Message)", value="")
     project_desc = st.text_area("项目描述 (用于评估获客)", value="", height=100)
@@ -271,7 +307,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("🏆 媒体分级配置")
     st.caption("输入媒体名称关键词，用逗号分隔")
-    
     tier1_input = st.text_area("Tier 1 (10分)", value="", height=68)
     tier2_input = st.text_area("Tier 2 (8分)", value="", height=68)
     tier3_input = st.text_area("Tier 3 (5分)", value="", height=68)
@@ -289,61 +324,42 @@ with st.sidebar:
 
 st.title("📡 传播价值 AI 评分系统")
 
-# 顶部公式展示
 with st.expander("查看核心算法公式", expanded=False):
-    st.latex(r'''
-    \color{black} \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}
-    ''')
-    st.latex(r'''
-    \color{black} \text{真需求} = 0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度} 
-    , \quad 
-    \text{声量} = 0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级}
-    ''')
+    st.latex(r'''\color{black} \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}''')
+    st.latex(r'''\color{black} \text{真需求} = 0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度}, \quad \text{声量} = 0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级}''')
 
-# 初始化引擎
 engine = ScorerEngine()
-
-# 标签页
 tab1, tab2 = st.tabs(["📄 新闻稿评分", "📊 媒体报道评分"])
 
-# --- TAB 1: 新闻稿评分 ---
+# --- TAB 1 ---
 with tab1:
     st.info("上传新闻稿 Word 文档，AI 将预判核心信息传递情况。")
     uploaded_word = st.file_uploader("上传 .docx 文件", type=['docx'])
     
-    # 结果容器 (使用 session_state 防止刷新丢失)
     if 'word_analysis_result' not in st.session_state:
         st.session_state.word_analysis_result = None
 
     if uploaded_word:
         st.success("✅ 文档已就绪")
         
-        # 按钮
         if st.button("开始分析", key="btn_word_analyze"):
             if not project_key_message:
                 st.warning("⚠️ 请在左侧填写【核心信息】")
             
             with st.spinner("AI 正在阅读文档..."):
                 try:
-                    # 读取内容
                     full_text = engine.read_docx_content(uploaded_word)
-                    
                     if len(full_text.strip()) < 10:
-                        st.error(f"文档内容过少 (提取到 {len(full_text)} 字)，无法进行分析。请检查文档是否加密或仅包含图片。")
+                        st.error(f"文档内容过少 (提取到 {len(full_text)} 字)，无法进行分析。")
                         st.session_state.word_analysis_result = None
                     else:
                         km, acq, prec, status = engine.analyze_content_with_ai(
                             full_text, project_key_message, project_desc, audience_mode, "内部稿件"
                         )
-                        st.session_state.word_analysis_result = {
-                            "km": km,
-                            "status": status,
-                            "text_len": len(full_text)
-                        }
+                        st.session_state.word_analysis_result = {"km": km, "status": status, "text_len": len(full_text)}
                 except Exception as e:
                     st.error(f"解析错误: {e}")
     
-    # 显示结果
     if st.session_state.word_analysis_result:
         res = st.session_state.word_analysis_result
         st.divider()
@@ -354,27 +370,18 @@ with tab1:
         else:
             st.error(f"评分失败 (0分)。\n原因: {res['status']}")
 
-# --- TAB 2: 媒体报道评分 ---
+# --- TAB 2 ---
 with tab2:
-    # 修改：只支持 xlsx
     uploaded_file = st.file_uploader("上传媒体监测报表 (.xlsx)", type=['xlsx'])
 
     if uploaded_file:
         try:
-            # 强制使用 Excel 读取
             df = pd.read_excel(uploaded_file)
-            
-            # 清洗列名
             df.columns = df.columns.str.strip()
 
-            # --- 核心适配逻辑 ---
-            if '媒体' in df.columns and '媒体名称' not in df.columns:
-                df['媒体名称'] = df['媒体']
-            
-            if '链接' in df.columns and 'URL' not in df.columns:
-                df['URL'] = df['链接']
+            if '媒体' in df.columns and '媒体名称' not in df.columns: df['媒体名称'] = df['媒体']
+            if '链接' in df.columns and 'URL' not in df.columns: df['URL'] = df['链接']
 
-            # 处理浏览量/PV
             def to_num(x):
                 try:
                     if pd.isna(x) or x == '': return 0.0
@@ -391,35 +398,28 @@ with tab2:
             df.loc[mask, 'Clean_Views'] = df.loc[mask, '浏览量'].apply(to_num)
             df['浏览量'] = df['Clean_Views']
 
-            # 处理互动量
             df['互动量'] = 0
             for col in ['点赞量', '评论量', '转发量']:
-                if col in df.columns:
-                    df['互动量'] += df[col].apply(to_num)
+                if col in df.columns: df['互动量'] += df[col].apply(to_num)
 
-            # 检查列名
             required_cols = ['媒体名称', 'URL', '互动量', '浏览量']
             missing_cols = [col for col in required_cols if col not in df.columns]
             
             if missing_cols:
-                st.error(f"⚠️ Excel 缺少必要列，且无法自动映射。缺失: {missing_cols}")
+                st.error(f"⚠️ Excel 缺少必要列。缺失: {missing_cols}")
                 st.info(f"当前列: {list(df.columns)}")
                 st.markdown("请确保文件包含 `媒体`、`链接`、`PV`(或浏览量) 等列。")
             else:
-                # 修改点1: 序号从1开始
                 df.index = range(1, len(df) + 1)
-                
-                # 修改点2: 提示全量数据已加载
-                st.success(f"✅ 成功读取 {len(df)} 条数据，数据预览如下 (全量数据将在点击分析后处理):")
+                st.success(f"✅ 成功读取 {len(df)} 条数据，以下为全量数据预览:")
                 
                 preview_cols = ['媒体名称', '标题'] if '标题' in df.columns else ['媒体名称']
                 preview_cols += ['URL', '浏览量', '互动量']
-                
-                # 修改点3: 显示全量数据
                 st.dataframe(df[preview_cols], use_container_width=True)
                 
                 st.markdown("---")
                 if st.button("开始分析", key="btn_xlsx_analyze"):
+                    st.info("⚠️ 提示：受限于免费 API 速率限制，系统将自动限速（每条间隔 4 秒）。请耐心等待。")
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     
@@ -427,14 +427,13 @@ with tab2:
                     total_rows = len(df)
 
                     for index, row in df.iterrows():
-                        status_text.text(f"正在分析第 {index}/{total_rows} 条: {row['媒体名称']}...")
+                        status_text.text(f"⏳ 正在分析第 {index}/{total_rows} 条: {row['媒体名称']}...")
                         
                         vol_quality = engine.calculate_volume_quality(row['浏览量'], row['互动量'])
                         tier_score = engine.get_media_tier_score(row['媒体名称'], tier_config)
                         volume_total = 0.6 * vol_quality + 0.4 * tier_score
                         
                         content = engine.fetch_url_content(row['URL'])
-                        
                         if not content and '标题' in df.columns and pd.notna(row['标题']):
                             content = f"文章标题：{row['标题']}"
                             msg_suffix = " (基于标题)"
@@ -446,6 +445,7 @@ with tab2:
                                 content, project_key_message, project_desc, audience_mode, row['媒体名称']
                             )
                             msg += msg_suffix
+                            time.sleep(4) 
                         else:
                             km_score, acq_score, prec_score = 0, 0, 0
                             msg = "URL Fail & No Title"
@@ -468,12 +468,9 @@ with tab2:
 
                     status_text.success("🎉 分析全部完成！")
                     res_df = pd.DataFrame(results)
-                    
-                    # 结果表序号也从 1 开始
                     res_df.index = range(1, len(res_df) + 1)
                     
                     st.divider()
-                    
                     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                     col_m1.metric("文章总数", len(res_df))
                     col_m2.metric("高价值 (≥8分)", len(res_df[res_df['总分'] >= 8]))
@@ -483,36 +480,48 @@ with tab2:
                     col_chart1, col_chart2 = st.columns([2, 1])
                     with col_chart1:
                         st.subheader("📊 得分排行")
-                        fig = px.bar(
-                            res_df.sort_values('总分', ascending=True), 
-                            x='总分', y='媒体名称', orientation='h',
-                            color='总分', color_continuous_scale='Bluered'
-                        )
+                        fig = px.bar(res_df.sort_values('总分', ascending=True), x='总分', y='媒体名称', orientation='h', color='总分', color_continuous_scale='Bluered')
                         st.plotly_chart(fig, use_container_width=True)
-                    
                     with col_chart2:
                         st.subheader("声量 vs 需求")
-                        fig2 = px.scatter(
-                            res_df, x='声量', y='真需求',
-                            hover_name='媒体名称', size='总分', color='获客力'
-                        )
+                        fig2 = px.scatter(res_df, x='声量', y='真需求', hover_name='媒体名称', size='总分', color='获客力')
                         st.plotly_chart(fig2, use_container_width=True)
 
                     st.subheader("📋 详细数据表")
-                    # 修复点：移除了导致报错的 .style.background_gradient
                     st.dataframe(res_df, use_container_width=True)
 
-                    # 导出 Excel
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        res_df.to_excel(writer, index=True) # 导出带序号
+                    # --- 导出功能区域 ---
+                    col_export1, col_export2 = st.columns([1, 1])
                     
-                    st.download_button(
-                        label="📥 导出结果 Excel",
-                        data=buffer.getvalue(),
-                        file_name="ai_scoring_report.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    with col_export1:
+                        # 1. 导出 Excel
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            res_df.to_excel(writer, index=True)
+                        
+                        st.download_button(
+                            label="📥 导出结果 Excel",
+                            data=buffer.getvalue(),
+                            file_name="ai_scoring_report.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                    
+                    with col_export2:
+                        # 2. 导出 PDF (调用浏览器打印)
+                        # 这里我们使用一个按钮来触发 Javascript 代码
+                        if st.button("📄 导出页面 PDF", use_container_width=True):
+                            # 注入一段 JS，自动唤起浏览器的打印窗口
+                            components.html(
+                                """
+                                <script>
+                                    window.print();
+                                </script>
+                                """,
+                                height=0, 
+                                width=0
+                            )
+                            st.toast("正在唤起打印窗口，请在弹窗中选择 '另存为 PDF'...")
 
         except Exception as e:
             st.error(f"文件处理错误: {e}")
