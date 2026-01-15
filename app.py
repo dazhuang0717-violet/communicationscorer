@@ -227,13 +227,13 @@ class ScorerEngine:
         {{"km_score": 8, "acquisition_score": 7, "audience_precision_score": 9}}
         """
         
-        # --- 自动寻路逻辑 ---
+        # --- 自动寻路逻辑：尝试多个模型版本直到成功 ---
         candidate_models = [
-            'gemini-2.5-flash',
-            'gemini-2.5-pro',
-            'gemini-2.0-flash', 
-            'gemini-flash-latest',
-            'gemini-1.5-flash'
+            'gemini-2.0-flash',                 # 稳定且快，首选
+            'gemini-2.0-flash-lite-preview-02-05', # 极快，备选
+            'gemini-2.5-flash',                 # 新版 Flash
+            'gemini-2.0-flash-exp',
+            'gemini-flash-latest'               # 自动指向最新 Flash
         ]
         
         last_error = None
@@ -255,21 +255,8 @@ class ScorerEngine:
                 # 继续尝试下一个模型
                 continue
 
-        # 错误诊断
-        available_models_diag = []
-        try:
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    available_models_diag.append(m.name)
-        except:
-            pass
-            
+        # 如果所有模型都失败
         error_msg = f"AI Error: All models failed. Last error: {str(last_error)}"
-        if available_models_diag:
-            error_msg += f" | Key Access: {', '.join(available_models_diag)}"
-        else:
-            error_msg += " | No models available for this API Key."
-            
         return 0, 0, 0, error_msg
 
 # --- 4. 侧边栏 (Sidebar) ---
@@ -419,10 +406,17 @@ with tab2:
                 st.info(f"当前列: {list(df.columns)}")
                 st.markdown("请确保文件包含 `媒体`、`链接`、`PV`(或浏览量) 等列。")
             else:
-                st.success(f"✅ 成功读取 {len(df)} 条数据，预览如下:")
+                # 修改点1: 序号从1开始
+                df.index = range(1, len(df) + 1)
+                
+                # 修改点2: 提示全量数据已加载
+                st.success(f"✅ 成功读取 {len(df)} 条数据，数据预览如下 (全量数据将在点击分析后处理):")
+                
                 preview_cols = ['媒体名称', '标题'] if '标题' in df.columns else ['媒体名称']
                 preview_cols += ['URL', '浏览量', '互动量']
-                st.dataframe(df[preview_cols].head(3), use_container_width=True)
+                
+                # 修改点3: 显示全量数据
+                st.dataframe(df[preview_cols], use_container_width=True)
                 
                 st.markdown("---")
                 if st.button("开始分析", key="btn_xlsx_analyze"):
@@ -433,7 +427,7 @@ with tab2:
                     total_rows = len(df)
 
                     for index, row in df.iterrows():
-                        status_text.text(f"正在分析第 {index+1}/{total_rows} 条: {row['媒体名称']}...")
+                        status_text.text(f"正在分析第 {index}/{total_rows} 条: {row['媒体名称']}...")
                         
                         vol_quality = engine.calculate_volume_quality(row['浏览量'], row['互动量'])
                         tier_score = engine.get_media_tier_score(row['媒体名称'], tier_config)
@@ -470,10 +464,13 @@ with tab2:
                             "媒体分级": tier_score,
                             "状态": msg
                         })
-                        progress_bar.progress((index + 1) / total_rows)
+                        progress_bar.progress(index / total_rows)
 
                     status_text.success("🎉 分析全部完成！")
                     res_df = pd.DataFrame(results)
+                    
+                    # 结果表序号也从 1 开始
+                    res_df.index = range(1, len(res_df) + 1)
                     
                     st.divider()
                     
@@ -502,12 +499,13 @@ with tab2:
                         st.plotly_chart(fig2, use_container_width=True)
 
                     st.subheader("📋 详细数据表")
-                    st.dataframe(res_df.style.background_gradient(subset=['总分'], cmap='Greens'), use_container_width=True)
+                    # 修复点：移除了导致报错的 .style.background_gradient
+                    st.dataframe(res_df, use_container_width=True)
 
                     # 导出 Excel
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        res_df.to_excel(writer, index=False)
+                        res_df.to_excel(writer, index=True) # 导出带序号
                     
                     st.download_button(
                         label="📥 导出结果 Excel",
