@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components  # 新增组件库用于触发JS
 import pandas as pd
 import numpy as np
 import google.generativeai as genai
@@ -21,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. UI 强制浅色模式 (深度修复版 + 打印优化) ---
+# --- 2. UI 强制浅色模式 (深度修复版) ---
 st.markdown("""
     <style>
         /* A. 全局容器强制白底黑字 */
@@ -109,38 +108,6 @@ st.markdown("""
         .streamlit-expanderContent {
             background-color: #ffffff !important;
             color: #31333F !important;
-        }
-
-        /* H. 打印模式专用样式 (导出PDF时生效) */
-        @media print {
-            /* 强制打印背景色 */
-            body {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-            /* 隐藏侧边栏 */
-            [data-testid="stSidebar"] {
-                display: none !important;
-            }
-            /* 隐藏顶部导航 */
-            header[data-testid="stHeader"] {
-                display: none !important;
-            }
-            /* 隐藏所有按钮和上传框 */
-            button, [data-testid="stFileUploaderDropzone"], .stButton, [data-testid="stToast"] {
-                display: none !important;
-            }
-            /* 调整主内容宽度 */
-            [data-testid="stAppViewContainer"] {
-                margin: 0 !important;
-                padding: 0 !important;
-                width: 100% !important;
-            }
-            /* 确保图表和表格显示完整 */
-            .main .block-container {
-                max-width: 100% !important;
-                padding: 1rem !important;
-            }
         }
     </style>
 """, unsafe_allow_html=True)
@@ -449,7 +416,6 @@ with tab2:
                                 content, project_key_message, project_desc, audience_mode, row['媒体名称']
                             )
                             msg += msg_suffix
-                            # 移除了 time.sleep(4)
                         else:
                             km_score, acq_score, prec_score = 0, 0, 0
                             msg = "URL Fail & No Title"
@@ -494,41 +460,18 @@ with tab2:
                     st.subheader("📋 详细数据表")
                     st.dataframe(res_df, use_container_width=True)
 
-                    # --- 导出功能区域 ---
-                    col_export1, col_export2 = st.columns([1, 1])
+                    # 1. 导出 Excel (只保留这一个导出功能)
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        res_df.to_excel(writer, index=True)
                     
-                    with col_export1:
-                        # 1. 导出 Excel
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                            res_df.to_excel(writer, index=True)
-                        
-                        st.download_button(
-                            label="📥 导出结果 Excel",
-                            data=buffer.getvalue(),
-                            file_name="ai_scoring_report.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
-                    
-                    with col_export2:
-                        # 2. 导出 PDF (调用浏览器打印)
-                        if st.button("📄 导出页面 PDF", use_container_width=True):
-                            # 核心修改：使用 window.parent.print() + 错误处理
-                            components.html(
-                                """
-                                <script>
-                                    try {
-                                        window.parent.print();
-                                    } catch (err) {
-                                        alert("无法自动唤起打印窗口，请直接按键盘快捷键 Ctrl+P (Mac请按 Cmd+P) 进行保存。");
-                                    }
-                                </script>
-                                """,
-                                height=0, 
-                                width=0
-                            )
-                            st.toast("正在唤起打印窗口... 若无反应请按 Ctrl+P")
+                    st.download_button(
+                        label="📥 导出结果 Excel",
+                        data=buffer.getvalue(),
+                        file_name="ai_scoring_report.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
 
         except Exception as e:
             st.error(f"文件处理错误: {e}")
