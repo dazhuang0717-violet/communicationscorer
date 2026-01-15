@@ -121,8 +121,7 @@ class ScorerEngine:
     def __init__(self):
         if INTERNAL_API_KEY:
             genai.configure(api_key=INTERNAL_API_KEY)
-            # --- 修复点：将 gemini-pro 改为 gemini-1.5-flash ---
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            # 初始化时不绑定特定模型，在调用时动态匹配
 
     def read_docx_content(self, file_obj):
         """增强版 Word 读取：同时读取段落和表格"""
@@ -227,18 +226,50 @@ class ScorerEngine:
         仅返回 JSON 字符串:
         {{"km_score": 8, "acquisition_score": 7, "audience_precision_score": 9}}
         """
+        
+        # --- 自动寻路逻辑：尝试多个模型版本直到成功 ---
+        candidate_models = [
+            'gemini-1.5-flash', 
+            'gemini-1.5-pro',
+            'gemini-pro',
+            'gemini-1.0-pro'
+        ]
+        
+        last_error = None
+        
+        for model_name in candidate_models:
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(prompt)
+                clean_text = response.text.replace('```json', '').replace('```', '').strip()
+                data = json.loads(clean_text)
+                return (
+                    data.get('km_score', 0), 
+                    data.get('acquisition_score', 0), 
+                    data.get('audience_precision_score', 0), 
+                    "Success"
+                )
+            except Exception as e:
+                last_error = e
+                # 继续尝试下一个模型
+                continue
+
+        # 如果所有模型都失败，尝试列出当前 Key 可用的模型，帮助排查
+        available_models_diag = []
         try:
-            response = self.model.generate_content(prompt)
-            clean_text = response.text.replace('```json', '').replace('```', '').strip()
-            data = json.loads(clean_text)
-            return (
-                data.get('km_score', 0), 
-                data.get('acquisition_score', 0), 
-                data.get('audience_precision_score', 0), 
-                "Success"
-            )
-        except Exception as e:
-            return 0, 0, 0, f"AI Error: {str(e)}"
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    available_models_diag.append(m.name)
+        except:
+            pass
+            
+        error_msg = f"AI Error: All models failed. Last error: {str(last_error)}"
+        if available_models_diag:
+            error_msg += f" | Key Access: {', '.join(available_models_diag)}"
+        else:
+            error_msg += " | No models available for this API Key."
+            
+        return 0, 0, 0, error_msg
 
 # --- 4. 侧边栏 (Sidebar) ---
 with st.sidebar:
@@ -298,12 +329,14 @@ with tab1:
         st.session_state.word_analysis_result = None
 
     if uploaded_word:
-        st.success(f"✅ 文档已就绪: {uploaded_word.name}")
+        # 修复点：移除了文件名显示
+        st.success("✅ 文档已就绪")
         
         # 按钮改为浅色，文案改为“开始分析”
         if st.button("开始分析", key="btn_word_analyze"):
             if not project_key_message:
-                st.warning("⚠️ 建议在左侧填写【核心信息】，否则 AI 评分可能不准确。")
+                # 修复点：修改了提示文案
+                st.warning("⚠️ 请在左侧填写【核心信息】")
             
             with st.spinner("AI 正在阅读文档..."):
                 try:
@@ -337,7 +370,7 @@ with tab1:
         else:
             # 显性显示 0 分原因
             st.error(f"评分失败 (0分)。\n原因: {res['status']}")
-            st.caption("提示: 请检查 API Key 额度，或文档是否包含有效文字。")
+            # 修复点：删除了原本在这里的 st.caption 提示
 
 # --- TAB 2: 媒体报道评分 ---
 with tab2:
@@ -414,7 +447,8 @@ with tab2:
                 st.dataframe(df[preview_cols].head(3), use_container_width=True)
                 
                 st.markdown("---")
-                if st.button("🚀 点击开始 AI 全量评分", type="primary"):
+                # 按钮使用默认色 (key="btn_csv_analyze")
+                if st.button("开始分析", key="btn_csv_analyze"):
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     
