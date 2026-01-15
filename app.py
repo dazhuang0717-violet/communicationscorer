@@ -227,12 +227,13 @@ class ScorerEngine:
         {{"km_score": 8, "acquisition_score": 7, "audience_precision_score": 9}}
         """
         
-        # --- 自动寻路逻辑：尝试多个模型版本直到成功 ---
+        # --- 自动寻路逻辑 ---
         candidate_models = [
-            'gemini-1.5-flash', 
-            'gemini-1.5-pro',
-            'gemini-pro',
-            'gemini-1.0-pro'
+            'gemini-2.5-flash',
+            'gemini-2.5-pro',
+            'gemini-2.0-flash', 
+            'gemini-flash-latest',
+            'gemini-1.5-flash'
         ]
         
         last_error = None
@@ -254,7 +255,7 @@ class ScorerEngine:
                 # 继续尝试下一个模型
                 continue
 
-        # 如果所有模型都失败，尝试列出当前 Key 可用的模型，帮助排查
+        # 错误诊断
         available_models_diag = []
         try:
             for m in genai.list_models():
@@ -303,7 +304,6 @@ st.title("📡 传播价值 AI 评分系统")
 
 # 顶部公式展示
 with st.expander("查看核心算法公式", expanded=False):
-    # 使用 \color{black} 确保公式颜色正确
     st.latex(r'''
     \color{black} \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}
     ''')
@@ -329,18 +329,16 @@ with tab1:
         st.session_state.word_analysis_result = None
 
     if uploaded_word:
-        # 修复点：移除了文件名显示
         st.success("✅ 文档已就绪")
         
-        # 按钮改为浅色，文案改为“开始分析”
+        # 按钮
         if st.button("开始分析", key="btn_word_analyze"):
             if not project_key_message:
-                # 修复点：修改了提示文案
                 st.warning("⚠️ 请在左侧填写【核心信息】")
             
             with st.spinner("AI 正在阅读文档..."):
                 try:
-                    # 读取内容 (增强版)
+                    # 读取内容
                     full_text = engine.read_docx_content(uploaded_word)
                     
                     if len(full_text.strip()) < 10:
@@ -358,97 +356,76 @@ with tab1:
                 except Exception as e:
                     st.error(f"解析错误: {e}")
     
-    # 显示结果 (如果存在)
+    # 显示结果
     if st.session_state.word_analysis_result:
         res = st.session_state.word_analysis_result
         st.divider()
         if res['km'] > 0:
-            # 仅显示核心信息匹配度，移除了获客吸引力
             st.metric("核心信息匹配度", f"{res['km']}/10")
             st.progress(res['km']/10)
             st.success(f"分析成功！(基于 {res['text_len']} 字文本分析)")
         else:
-            # 显性显示 0 分原因
             st.error(f"评分失败 (0分)。\n原因: {res['status']}")
-            # 修复点：删除了原本在这里的 st.caption 提示
 
 # --- TAB 2: 媒体报道评分 ---
 with tab2:
-    uploaded_csv = st.file_uploader("上传媒体监测报表 (.csv)", type=['csv'])
+    # 修改：只支持 xlsx
+    uploaded_file = st.file_uploader("上传媒体监测报表 (.xlsx)", type=['xlsx'])
 
-    if uploaded_csv:
+    if uploaded_file:
         try:
-            try:
-                df = pd.read_csv(uploaded_csv)
-            except UnicodeDecodeError:
-                uploaded_csv.seek(0)
-                df = pd.read_csv(uploaded_csv, encoding='gbk')
-            except Exception as e:
-                st.error(f"文件读取失败，请检查文件格式。错误信息: {e}")
-                st.stop()
-
+            # 强制使用 Excel 读取
+            df = pd.read_excel(uploaded_file)
+            
             # 清洗列名
             df.columns = df.columns.str.strip()
 
             # --- 核心适配逻辑 ---
-            
-            # 1. 映射媒体名称 (处理 "媒体" -> "媒体名称")
             if '媒体' in df.columns and '媒体名称' not in df.columns:
                 df['媒体名称'] = df['媒体']
             
-            # 2. 映射 URL (处理 "链接" -> "URL")
             if '链接' in df.columns and 'URL' not in df.columns:
                 df['URL'] = df['链接']
 
-            # 3. 处理浏览数据 (优先 PV，其次 浏览量)
+            # 处理浏览量/PV
             def to_num(x):
                 try:
-                    # 处理空值、逗号、加号、万字
                     if pd.isna(x) or x == '': return 0.0
                     s = str(x).replace(',', '').replace('+', '').strip()
-                    if '万' in s:
-                        return float(s.replace('万', '')) * 10000
+                    if '万' in s: return float(s.replace('万', '')) * 10000
                     return float(s)
-                except:
-                    return 0.0
+                except: return 0.0
 
-            # 确保列存在
             if 'PV' not in df.columns: df['PV'] = 0
             if '浏览量' not in df.columns: df['浏览量'] = 0
 
-            # 填充逻辑：创建 Clean_Views
             df['Clean_Views'] = df['PV'].apply(to_num)
-            # 如果 PV 是 0，尝试用浏览量填充
             mask = df['Clean_Views'] == 0
             df.loc[mask, 'Clean_Views'] = df.loc[mask, '浏览量'].apply(to_num)
-            
-            # 最终用于显示的浏览量
             df['浏览量'] = df['Clean_Views']
 
-            # 4. 计算互动量 (点赞+评论+转发)
+            # 处理互动量
             df['互动量'] = 0
             for col in ['点赞量', '评论量', '转发量']:
                 if col in df.columns:
                     df['互动量'] += df[col].apply(to_num)
 
-            # --- 检查列名 ---
+            # 检查列名
             required_cols = ['媒体名称', 'URL', '互动量', '浏览量']
             missing_cols = [col for col in required_cols if col not in df.columns]
             
             if missing_cols:
-                st.error(f"⚠️ CSV 缺少必要列，且无法自动映射。缺失: {missing_cols}")
+                st.error(f"⚠️ Excel 缺少必要列，且无法自动映射。缺失: {missing_cols}")
                 st.info(f"当前列: {list(df.columns)}")
-                st.markdown("请确保 CSV 包含 `媒体`、`链接`、`PV`(或浏览量) 等列。")
+                st.markdown("请确保文件包含 `媒体`、`链接`、`PV`(或浏览量) 等列。")
             else:
                 st.success(f"✅ 成功读取 {len(df)} 条数据，预览如下:")
-                # 预览关键列
                 preview_cols = ['媒体名称', '标题'] if '标题' in df.columns else ['媒体名称']
                 preview_cols += ['URL', '浏览量', '互动量']
                 st.dataframe(df[preview_cols].head(3), use_container_width=True)
                 
                 st.markdown("---")
-                # 按钮使用默认色 (key="btn_csv_analyze")
-                if st.button("开始分析", key="btn_csv_analyze"):
+                if st.button("开始分析", key="btn_xlsx_analyze"):
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     
@@ -458,15 +435,12 @@ with tab2:
                     for index, row in df.iterrows():
                         status_text.text(f"正在分析第 {index+1}/{total_rows} 条: {row['媒体名称']}...")
                         
-                        # 1. 声量计算
                         vol_quality = engine.calculate_volume_quality(row['浏览量'], row['互动量'])
                         tier_score = engine.get_media_tier_score(row['媒体名称'], tier_config)
                         volume_total = 0.6 * vol_quality + 0.4 * tier_score
                         
-                        # 2. 内容获取 (爬虫 + 标题兜底)
                         content = engine.fetch_url_content(row['URL'])
                         
-                        # 兜底：如果爬不到内容，且 CSV 有标题，用标题分析
                         if not content and '标题' in df.columns and pd.notna(row['标题']):
                             content = f"文章标题：{row['标题']}"
                             msg_suffix = " (基于标题)"
@@ -482,7 +456,6 @@ with tab2:
                             km_score, acq_score, prec_score = 0, 0, 0
                             msg = "URL Fail & No Title"
 
-                        # 3. 总分计算
                         true_demand = 0.6 * km_score + 0.4 * prec_score
                         total_score = (0.5 * true_demand) + (0.2 * acq_score) + (0.3 * volume_total)
 
@@ -531,8 +504,17 @@ with tab2:
                     st.subheader("📋 详细数据表")
                     st.dataframe(res_df.style.background_gradient(subset=['总分'], cmap='Greens'), use_container_width=True)
 
-                    csv = res_df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button("📥 导出结果 CSV", csv, "report.csv", "text/csv")
+                    # 导出 Excel
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        res_df.to_excel(writer, index=False)
+                    
+                    st.download_button(
+                        label="📥 导出结果 Excel",
+                        data=buffer.getvalue(),
+                        file_name="ai_scoring_report.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
 
         except Exception as e:
             st.error(f"文件处理错误: {e}")
