@@ -177,19 +177,19 @@ with st.sidebar:
     # 横线已删除
     
     st.subheader("📋 项目基础信息")
-    # 默认值已清空
-    project_key_message = st.text_input("核心信息 (Key Message)", value="", placeholder="例如：新药上市有效率达90%")
-    project_desc = st.text_area("项目描述 (用于评估获客)", value="", placeholder="例如：这是一款针对XX人群的医疗工具...", height=100)
+    # 默认值已清空，删除了 placeholder
+    project_key_message = st.text_input("核心信息 (Key Message)", value="")
+    project_desc = st.text_area("项目描述 (用于评估获客)", value="", height=100)
     audience_mode = st.radio("目标受众模式", ["大众 (General)", "患者 (Patient)", "医疗专业人士 (HCP)"])
 
     st.markdown("---")
     st.subheader("🏆 媒体分级配置")
     st.caption("输入媒体名称关键词，用逗号分隔")
     
-    # 默认值已清空
-    tier1_input = st.text_area("Tier 1 (10分)", value="", placeholder="输入顶级媒体...", height=68)
-    tier2_input = st.text_area("Tier 2 (8分)", value="", placeholder="输入核心媒体...", height=68)
-    tier3_input = st.text_area("Tier 3 (5分)", value="", placeholder="输入大众/其他媒体...", height=68)
+    # 默认值已清空，删除了 placeholder
+    tier1_input = st.text_area("Tier 1 (10分)", value="", height=68)
+    tier2_input = st.text_area("Tier 2 (8分)", value="", height=68)
+    tier3_input = st.text_area("Tier 3 (5分)", value="", height=68)
 
     def parse_tiers(text):
         return [x.strip().lower() for x in text.split(',') if x.strip()]
@@ -210,13 +210,13 @@ with st.expander("查看核心算法公式", expanded=False):
     st.latex(r'''
     \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}
     ''')
-    # 第二行：因子拆解 (合并显示以节省空间)
+    # 第二行：因子拆解 (合并显示以节省空间，去除了括号，改为逗号分隔)
     st.latex(r'''
-    \text{真需求} = (0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度}) 
-    \quad \bigg| \quad 
-    \text{声量} = (0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级})
+    \text{真需求} = 0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度} 
+    , \quad 
+    \text{声量} = 0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级}
     ''')
-    st.caption("注：获客效能由 AI 基于项目描述直接打分 (0-10)")
+    # 删除了底部注视说明
 
 # 初始化引擎
 engine = ScorerEngine()
@@ -307,7 +307,7 @@ with tab2:
                             "获客力": acq_score,
                             "声量": round(volume_total, 2),
                             "信息匹配": km_score,
-                            "受众精准度": prec_score, # 修正字段名
+                            "受众精准度": prec_score, 
                             "媒体分级": tier_score,
                             "状态": msg
                         })
