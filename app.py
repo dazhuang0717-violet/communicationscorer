@@ -19,57 +19,87 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. UI 强制浅色模式 (深度优化版) ---
-# 这段 CSS 会覆盖 Streamlit 的默认深色模式设置，防止出现黑块
+# --- 2. UI 强制浅色模式 (深度修复版) ---
+# 这段 CSS 会强制覆盖 Streamlit 的深色模式默认样式
 st.markdown("""
     <style>
-        /* 1. 强制全局背景和文字颜色 */
+        /* A. 全局容器强制白底黑字 */
         [data-testid="stAppViewContainer"] {
-            background-color: #ffffff;
-            color: #31333F;
+            background-color: #ffffff !important;
+            color: #31333F !important;
         }
         [data-testid="stSidebar"] {
-            background-color: #f8f9fa; /* 侧边栏浅灰 */
+            background-color: #f8f9fa !important;
             border-right: 1px solid #e0e0e0;
         }
-        [data-testid="stHeader"] {
-            background-color: rgba(255, 255, 255, 0);
-        }
         
-        /* 2. 强制所有文本颜色为深灰，防止在深色模式下变白 */
+        /* B. 修复顶部导航栏和右上角按钮不可见问题 */
+        header[data-testid="stHeader"] {
+            background-color: #ffffff !important;
+            border-bottom: 1px solid #f0f2f6;
+        }
+        /* 强制顶部所有图标（菜单、Github等）为深色 */
+        header[data-testid="stHeader"] button, 
+        header[data-testid="stHeader"] a, 
+        header[data-testid="stHeader"] svg {
+            color: #31333F !important;
+            fill: #31333F !important;
+        }
+
+        /* C. 修复文件上传组件出现“黑块”的问题 */
+        [data-testid="stFileUploaderDropzone"] {
+            background-color: #f8f9fa !important;
+            border: 1px dashed #d1d5db !important;
+        }
+        /* 强制上传区域内的所有文字为深色 */
+        [data-testid="stFileUploaderDropzone"] div, 
+        [data-testid="stFileUploaderDropzone"] span, 
+        [data-testid="stFileUploaderDropzone"] small,
+        [data-testid="stFileUploaderDropzone"] p {
+            color: #31333F !important;
+        }
+        /* 强制上传按钮样式 */
+        [data-testid="stFileUploaderDropzone"] button {
+            background-color: #ffffff !important;
+            color: #31333F !important;
+            border: 1px solid #d1d5db !important;
+        }
+
+        /* D. 通用文本和输入框修复 */
         h1, h2, h3, h4, h5, h6, p, span, div, label {
             color: #31333F !important;
         }
-        
-        /* 3. 修复输入框在深色模式下变黑的问题 */
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
             color: #31333F !important;
             background-color: #ffffff !important;
             border: 1px solid #d1d5db;
         }
-        /* 修复输入框 focus 状态 */
         .stTextInput input:focus, .stTextArea textarea:focus {
             border-color: #ff4b4b;
-            box-shadow: none;
         }
         
-        /* 4. 修复 Metric 指标颜色 */
+        /* E. 修复 Metric 指标和表格颜色 */
         [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
             color: #31333F !important;
         }
-        
-        /* 5. 修复表格文字颜色 */
         [data-testid="stDataFrame"] {
             color: #31333F !important;
         }
-        
-        /* 6. 隐藏不必要的默认元素 */
+        [data-testid="stDataFrame"] svg {
+             fill: #31333F !important;
+        }
+
+        /* F. 隐藏不需要的元素 */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         
-        /* 调整 Expander 的样式 */
+        /* Expander 样式 */
         .streamlit-expanderHeader {
-            background-color: #f0f2f6;
+            background-color: #f0f2f6 !important;
+            color: #31333F !important;
+        }
+        .streamlit-expanderContent {
+            background-color: #ffffff !important;
             color: #31333F !important;
         }
     </style>
@@ -174,10 +204,9 @@ class ScorerEngine:
 # --- 4. 侧边栏 (Sidebar) ---
 with st.sidebar:
     st.header("⚙️ 系统配置")
-    # 横线已删除
     
     st.subheader("📋 项目基础信息")
-    # 默认值已清空，删除了 placeholder
+    # 默认值已清空
     project_key_message = st.text_input("核心信息 (Key Message)", value="")
     project_desc = st.text_area("项目描述 (用于评估获客)", value="", height=100)
     audience_mode = st.radio("目标受众模式", ["大众 (General)", "患者 (Patient)", "医疗专业人士 (HCP)"])
@@ -186,7 +215,7 @@ with st.sidebar:
     st.subheader("🏆 媒体分级配置")
     st.caption("输入媒体名称关键词，用逗号分隔")
     
-    # 默认值已清空，删除了 placeholder
+    # 默认值已清空
     tier1_input = st.text_area("Tier 1 (10分)", value="", height=68)
     tier2_input = st.text_area("Tier 2 (8分)", value="", height=68)
     tier3_input = st.text_area("Tier 3 (5分)", value="", height=68)
@@ -204,19 +233,18 @@ with st.sidebar:
 
 st.title("📡 传播价值 AI 评分系统")
 
-# 顶部公式展示 (布局优化：两行显示)
+# 顶部公式展示
 with st.expander("查看核心算法公式", expanded=False):
     # 第一行：总分
     st.latex(r'''
     \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}
     ''')
-    # 第二行：因子拆解 (合并显示以节省空间，去除了括号，改为逗号分隔)
+    # 第二行：因子拆解
     st.latex(r'''
     \text{真需求} = 0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度} 
     , \quad 
     \text{声量} = 0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级}
     ''')
-    # 删除了底部注视说明
 
 # 初始化引擎
 engine = ScorerEngine()
@@ -264,7 +292,7 @@ with tab2:
             df = pd.read_csv(uploaded_csv)
             df.columns = df.columns.str.strip()
             
-            # 隐式检查列名，不报错给用户，只在后台处理
+            # 隐式检查列名
             required_cols = ['媒体名称', 'URL', '互动量', '浏览量']
             missing_cols = [col for col in required_cols if col not in df.columns]
             
