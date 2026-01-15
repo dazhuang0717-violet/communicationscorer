@@ -113,6 +113,11 @@ st.markdown("""
 
         /* H. 打印模式专用样式 (导出PDF时生效) */
         @media print {
+            /* 强制打印背景色 */
+            body {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
             /* 隐藏侧边栏 */
             [data-testid="stSidebar"] {
                 display: none !important;
@@ -122,7 +127,7 @@ st.markdown("""
                 display: none !important;
             }
             /* 隐藏所有按钮和上传框 */
-            button, [data-testid="stFileUploaderDropzone"], .stButton {
+            button, [data-testid="stFileUploaderDropzone"], .stButton, [data-testid="stToast"] {
                 display: none !important;
             }
             /* 调整主内容宽度 */
@@ -419,7 +424,6 @@ with tab2:
                 
                 st.markdown("---")
                 if st.button("开始分析", key="btn_xlsx_analyze"):
-                    st.info("⚠️ 提示：受限于免费 API 速率限制，系统将自动限速（每条间隔 4 秒）。请耐心等待。")
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     
@@ -445,7 +449,7 @@ with tab2:
                                 content, project_key_message, project_desc, audience_mode, row['媒体名称']
                             )
                             msg += msg_suffix
-                            time.sleep(4) 
+                            # 移除了 time.sleep(4)
                         else:
                             km_score, acq_score, prec_score = 0, 0, 0
                             msg = "URL Fail & No Title"
@@ -509,19 +513,22 @@ with tab2:
                     
                     with col_export2:
                         # 2. 导出 PDF (调用浏览器打印)
-                        # 这里我们使用一个按钮来触发 Javascript 代码
                         if st.button("📄 导出页面 PDF", use_container_width=True):
-                            # 注入一段 JS，自动唤起浏览器的打印窗口
+                            # 核心修改：使用 window.parent.print() + 错误处理
                             components.html(
                                 """
                                 <script>
-                                    window.print();
+                                    try {
+                                        window.parent.print();
+                                    } catch (err) {
+                                        alert("无法自动唤起打印窗口，请直接按键盘快捷键 Ctrl+P (Mac请按 Cmd+P) 进行保存。");
+                                    }
                                 </script>
                                 """,
                                 height=0, 
                                 width=0
                             )
-                            st.toast("正在唤起打印窗口，请在弹窗中选择 '另存为 PDF'...")
+                            st.toast("正在唤起打印窗口... 若无反应请按 Ctrl+P")
 
         except Exception as e:
             st.error(f"文件处理错误: {e}")
