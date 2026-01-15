@@ -20,7 +20,6 @@ st.set_page_config(
 )
 
 # --- 2. UI 强制浅色模式 (深度修复版) ---
-# 这段 CSS 会强制覆盖 Streamlit 的深色模式默认样式
 st.markdown("""
     <style>
         /* A. 全局容器强制白底黑字 */
@@ -33,12 +32,11 @@ st.markdown("""
             border-right: 1px solid #e0e0e0;
         }
         
-        /* B. 修复顶部导航栏和右上角按钮不可见问题 */
+        /* B. 修复顶部导航栏和右上角按钮 */
         header[data-testid="stHeader"] {
             background-color: #ffffff !important;
             border-bottom: 1px solid #f0f2f6;
         }
-        /* 强制顶部所有图标（菜单、Github等）为深色 */
         header[data-testid="stHeader"] button, 
         header[data-testid="stHeader"] a, 
         header[data-testid="stHeader"] svg {
@@ -46,19 +44,17 @@ st.markdown("""
             fill: #31333F !important;
         }
 
-        /* C. 修复文件上传组件出现“黑块”的问题 */
+        /* C. 修复文件上传组件 */
         [data-testid="stFileUploaderDropzone"] {
             background-color: #f8f9fa !important;
             border: 1px dashed #d1d5db !important;
         }
-        /* 强制上传区域内的所有文字为深色 */
         [data-testid="stFileUploaderDropzone"] div, 
         [data-testid="stFileUploaderDropzone"] span, 
         [data-testid="stFileUploaderDropzone"] small,
         [data-testid="stFileUploaderDropzone"] p {
             color: #31333F !important;
         }
-        /* 强制上传按钮样式 */
         [data-testid="stFileUploaderDropzone"] button {
             background-color: #ffffff !important;
             color: #31333F !important;
@@ -89,11 +85,10 @@ st.markdown("""
              fill: #31333F !important;
         }
 
-        /* F. 隐藏不需要的元素 */
+        /* F. 隐藏元素 */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         
-        /* Expander 样式 */
         .streamlit-expanderHeader {
             background-color: #f0f2f6 !important;
             color: #31333F !important;
@@ -163,7 +158,6 @@ class ScorerEngine:
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
         if not INTERNAL_API_KEY: return 0, 0, 0, "API Key Error"
         
-        # 容错：如果用户没填 Key Message，给一个默认提示给 AI，避免报错
         safe_km = key_message if key_message else "未指定核心信息，请评估文章的主题清晰度"
         safe_desc = project_desc if project_desc else "未指定项目描述，请评估文章的通用吸引力"
 
@@ -206,7 +200,6 @@ with st.sidebar:
     st.header("⚙️ 系统配置")
     
     st.subheader("📋 项目基础信息")
-    # 默认值已清空
     project_key_message = st.text_input("核心信息 (Key Message)", value="")
     project_desc = st.text_area("项目描述 (用于评估获客)", value="", height=100)
     audience_mode = st.radio("目标受众模式", ["大众 (General)", "患者 (Patient)", "医疗专业人士 (HCP)"])
@@ -215,7 +208,6 @@ with st.sidebar:
     st.subheader("🏆 媒体分级配置")
     st.caption("输入媒体名称关键词，用逗号分隔")
     
-    # 默认值已清空
     tier1_input = st.text_area("Tier 1 (10分)", value="", height=68)
     tier2_input = st.text_area("Tier 2 (8分)", value="", height=68)
     tier3_input = st.text_area("Tier 3 (5分)", value="", height=68)
@@ -235,11 +227,9 @@ st.title("📡 传播价值 AI 评分系统")
 
 # 顶部公式展示
 with st.expander("查看核心算法公式", expanded=False):
-    # 第一行：总分
     st.latex(r'''
     \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}
     ''')
-    # 第二行：因子拆解
     st.latex(r'''
     \text{真需求} = 0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度} 
     , \quad 
@@ -258,28 +248,37 @@ with tab1:
     uploaded_word = st.file_uploader("上传 .docx 文件", type=['docx'])
     
     if uploaded_word:
-        if st.button("开始预检分析"):
+        # --- 新增反馈：上传后立即显示 ---
+        st.success(f"✅ 文档已就绪: {uploaded_word.name}")
+        st.markdown("点击下方红色按钮开始分析 👇")
+        
+        if st.button("🚀 开始预检分析", type="primary", key="btn_word_analyze"):
             if not project_key_message:
                 st.warning("⚠️ 建议在左侧填写【核心信息】，否则 AI 评分可能不准确。")
             
             with st.spinner("AI 正在阅读文档..."):
                 try:
+                    # 重新定位文件指针，防止读取为空
+                    uploaded_word.seek(0)
                     doc = Document(uploaded_word)
                     full_text = "\n".join([para.text for para in doc.paragraphs])
                     
-                    km, acq, prec, status = engine.analyze_content_with_ai(
-                        full_text, project_key_message, project_desc, audience_mode, "内部稿件"
-                    )
-                    
-                    col_res1, col_res2 = st.columns(2)
-                    with col_res1:
-                        st.metric("核心信息匹配度", f"{km}/10")
-                        st.progress(km/10)
-                    with col_res2:
-                        st.metric("预期获客吸引力", f"{acq}/10")
-                        st.progress(acq/10)
-                    
-                    st.success("分析完成！")
+                    if len(full_text.strip()) < 10:
+                        st.error("文档内容过少，无法进行分析。")
+                    else:
+                        km, acq, prec, status = engine.analyze_content_with_ai(
+                            full_text, project_key_message, project_desc, audience_mode, "内部稿件"
+                        )
+                        
+                        col_res1, col_res2 = st.columns(2)
+                        with col_res1:
+                            st.metric("核心信息匹配度", f"{km}/10")
+                            st.progress(km/10)
+                        with col_res2:
+                            st.metric("预期获客吸引力", f"{acq}/10")
+                            st.progress(acq/10)
+                        
+                        st.success("分析完成！")
                 except Exception as e:
                     st.error(f"解析错误: {e}")
 
@@ -289,19 +288,31 @@ with tab2:
 
     if uploaded_csv:
         try:
-            df = pd.read_csv(uploaded_csv)
+            try:
+                df = pd.read_csv(uploaded_csv)
+            except UnicodeDecodeError:
+                uploaded_csv.seek(0)
+                df = pd.read_csv(uploaded_csv, encoding='gbk')
+            except Exception as e:
+                st.error(f"文件读取失败，请检查文件格式。错误信息: {e}")
+                st.stop()
+
             df.columns = df.columns.str.strip()
             
-            # 隐式检查列名
             required_cols = ['媒体名称', 'URL', '互动量', '浏览量']
             missing_cols = [col for col in required_cols if col not in df.columns]
             
             if missing_cols:
-                st.error(f"CSV 格式错误，缺少列: {missing_cols}")
+                st.error(f"⚠️ CSV 读取成功，但列名不匹配！")
+                st.warning(f"系统需要的列名: {required_cols}")
+                st.info(f"你文件中的列名: {list(df.columns)}")
+                st.markdown("请修改 CSV 表头后重新上传。")
             else:
+                st.success(f"✅ 成功读取 {len(df)} 条数据，预览如下:")
                 st.dataframe(df.head(3), use_container_width=True)
                 
-                if st.button("开始 AI 全量评分", type="primary"):
+                st.markdown("---")
+                if st.button("🚀 点击开始 AI 全量评分", type="primary"):
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     
@@ -309,7 +320,7 @@ with tab2:
                     total_rows = len(df)
 
                     for index, row in df.iterrows():
-                        status_text.text(f"正在处理: {row['媒体名称']}...")
+                        status_text.text(f"正在分析第 {index+1}/{total_rows} 条: {row['媒体名称']}...")
                         
                         vol_quality = engine.calculate_volume_quality(row['浏览量'], row['互动量'])
                         tier_score = engine.get_media_tier_score(row['媒体名称'], tier_config)
@@ -341,7 +352,7 @@ with tab2:
                         })
                         progress_bar.progress((index + 1) / total_rows)
 
-                    status_text.text("分析完成！")
+                    status_text.success("🎉 分析全部完成！")
                     res_df = pd.DataFrame(results)
                     
                     st.divider()
