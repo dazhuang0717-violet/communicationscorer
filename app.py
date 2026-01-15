@@ -11,7 +11,7 @@ import math
 import json
 import re
 
-# --- 1. 配置页面与强制浅色模式 ---
+# --- 1. 页面配置 ---
 st.set_page_config(
     page_title="传播价值 AI 评分系统",
     page_icon="📊",
@@ -19,57 +19,81 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 强制浅色模式 CSS 注入
+# --- 2. UI 强制浅色模式 (深度优化版) ---
+# 这段 CSS 会覆盖 Streamlit 的默认深色模式设置，防止出现黑块
 st.markdown("""
     <style>
-        /* 强制主区域背景为白色 */
-        .stApp {
-            background-color: #FFFFFF;
+        /* 1. 强制全局背景和文字颜色 */
+        [data-testid="stAppViewContainer"] {
+            background-color: #ffffff;
             color: #31333F;
         }
-        /* 强制侧边栏背景为浅灰 */
         [data-testid="stSidebar"] {
-            background-color: #F0F2F6;
+            background-color: #f8f9fa; /* 侧边栏浅灰 */
+            border-right: 1px solid #e0e0e0;
         }
-        /* 强制文字颜色 */
-        p, h1, h2, h3, h4, h5, h6, li, span, div {
+        [data-testid="stHeader"] {
+            background-color: rgba(255, 255, 255, 0);
+        }
+        
+        /* 2. 强制所有文本颜色为深灰，防止在深色模式下变白 */
+        h1, h2, h3, h4, h5, h6, p, span, div, label {
             color: #31333F !important;
         }
-        /* 修复暗色模式下输入框看不清的问题 */
-        .stTextInput input, .stTextArea textarea {
-            color: #31333F;
-            background-color: #FFFFFF;
+        
+        /* 3. 修复输入框在深色模式下变黑的问题 */
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
+            color: #31333F !important;
+            background-color: #ffffff !important;
+            border: 1px solid #d1d5db;
+        }
+        /* 修复输入框 focus 状态 */
+        .stTextInput input:focus, .stTextArea textarea:focus {
+            border-color: #ff4b4b;
+            box-shadow: none;
+        }
+        
+        /* 4. 修复 Metric 指标颜色 */
+        [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
+            color: #31333F !important;
+        }
+        
+        /* 5. 修复表格文字颜色 */
+        [data-testid="stDataFrame"] {
+            color: #31333F !important;
+        }
+        
+        /* 6. 隐藏不必要的默认元素 */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        
+        /* 调整 Expander 的样式 */
+        .streamlit-expanderHeader {
+            background-color: #f0f2f6;
+            color: #31333F !important;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. 核心参数配置 ---
 # 硬编码 API Key
 INTERNAL_API_KEY = "AIzaSyCdz_GYYbJhSMtAL3vP_2_-TNTYX0bUt94"
 
-# --- 3. 核心工具类与函数 (Backend Logic) ---
+# --- 3. 核心引擎 (Backend) ---
 
 class ScorerEngine:
-    """处理评分逻辑的核心引擎"""
-    
     def __init__(self):
-        # 直接使用硬编码的 Key
         if INTERNAL_API_KEY:
             genai.configure(api_key=INTERNAL_API_KEY)
             self.model = genai.GenerativeModel('gemini-pro')
 
     def fetch_url_content(self, url):
-        """爬虫模块：Jina Reader 优先，Requests 降级"""
-        if not url or pd.isna(url):
-            return ""
-        
+        if not url or pd.isna(url): return ""
         try:
             jina_url = f"https://r.jina.ai/{url}"
             response = requests.get(jina_url, timeout=8)
             if response.status_code == 200 and len(response.text) > 100:
                 return response.text[:10000]
-        except Exception:
-            pass 
+        except: pass 
 
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
@@ -80,46 +104,38 @@ class ScorerEngine:
                 return text[:10000]
         except Exception as e:
             return f"Error: {str(e)}"
-        
         return ""
 
     def calculate_volume_quality(self, views, interactions):
-        """计算传播质量"""
         try:
             def clean_num(x):
                 if isinstance(x, str):
                     x = re.sub(r'[kK]', '000', x)
                     x = re.sub(r'[^\d\.]', '', x)
                 return float(x) if x else 0.0
-
             v = clean_num(views)
             i = clean_num(interactions)
             raw_score = math.log10(v + i * 5 + 1) * 1.5
             return min(10.0, round(raw_score, 1))
-        except:
-            return 0.0
+        except: return 0.0
 
     def get_media_tier_score(self, media_name, tiers_config):
-        """计算媒体分级分数"""
-        if not media_name or pd.isna(media_name):
-            return 3 # 默认未命中任何名单的基础分
-        
+        if not media_name or pd.isna(media_name): return 3
         m_name = str(media_name).lower().strip()
-        
-        # 依次检查 Tier 1, 2, 3
         for tier_name, tier_list in tiers_config.items():
             for configured_media in tier_list:
                 if configured_media and configured_media in m_name:
                     if tier_name == 'tier1': return 10
                     if tier_name == 'tier2': return 8
                     if tier_name == 'tier3': return 5
-        
-        return 3 # 未在任何名单中，给低分
+        return 3
 
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
-        """AI 评分"""
-        if not INTERNAL_API_KEY:
-            return 0, 0, 0, "API Key Error"
+        if not INTERNAL_API_KEY: return 0, 0, 0, "API Key Error"
+        
+        # 容错：如果用户没填 Key Message，给一个默认提示给 AI，避免报错
+        safe_km = key_message if key_message else "未指定核心信息，请评估文章的主题清晰度"
+        safe_desc = project_desc if project_desc else "未指定项目描述，请评估文章的通用吸引力"
 
         prompt = f"""
         你是一个专业的公关传播分析师。请基于以下输入信息对一篇文章进行评分。
@@ -127,22 +143,21 @@ class ScorerEngine:
         【输入信息】
         1. 目标受众模式: {audience_mode}
         2. 媒体名称: {media_name}
-        3. 核心传播信息 (Key Message): {key_message}
-        4. 项目描述: {project_desc}
+        3. 核心传播信息 (Key Message): {safe_km}
+        4. 项目描述: {safe_desc}
         5. 文章/网页内容: 
         {content[:3000]}... (内容截断)
 
         【任务】
         请分析并返回以下 3 个维度的分数（0-10分），并严格按照 JSON 格式返回：
-        1. km_score: 文章是否有效传递了核心信息 '{key_message}'？(0=完全未提及, 10=深度且准确传递)
-        2. acquisition_score: 基于项目描述，这篇文章对目标受众的获客吸引力如何？(0=无吸引力, 10=极强吸引力)
-        3. audience_precision_score: 考虑到媒体 '{media_name}' 和目标受众 '{audience_mode}'，受众精准度如何？(0=完全错配, 10=非常精准)
+        1. km_score: 文章是否有效传递了核心信息？(0=无, 10=深度)
+        2. acquisition_score: 基于项目描述，这篇文章的获客吸引力如何？
+        3. audience_precision_score: 考虑到媒体和受众模式，受众精准度如何？
 
         【输出格式】
-        仅返回 JSON 字符串，不要包含 Markdown 格式。格式如下：
+        仅返回 JSON 字符串:
         {{"km_score": 8, "acquisition_score": 7, "audience_precision_score": 9}}
         """
-
         try:
             response = self.model.generate_content(prompt)
             clean_text = response.text.replace('```json', '').replace('```', '').strip()
@@ -156,28 +171,26 @@ class ScorerEngine:
         except Exception as e:
             return 0, 0, 0, f"AI Error: {str(e)}"
 
-# --- 4. 侧边栏配置 (Sidebar) ---
+# --- 4. 侧边栏 (Sidebar) ---
 with st.sidebar:
     st.header("⚙️ 系统配置")
+    # 横线已删除
     
-    # API Key 部分已移除 UI
-
-    st.markdown("---")
     st.subheader("📋 项目基础信息")
-    project_key_message = st.text_input("核心信息 (Key Message)", value="AI 赋能医疗创新")
-    project_desc = st.text_area("项目描述 (用于评估获客)", value="这是一款革命性的 AI 诊断工具，旨在帮助医生提高效率。")
+    # 默认值已清空
+    project_key_message = st.text_input("核心信息 (Key Message)", value="", placeholder="例如：新药上市有效率达90%")
+    project_desc = st.text_area("项目描述 (用于评估获客)", value="", placeholder="例如：这是一款针对XX人群的医疗工具...", height=100)
     audience_mode = st.radio("目标受众模式", ["大众 (General)", "患者 (Patient)", "医疗专业人士 (HCP)"])
 
     st.markdown("---")
     st.subheader("🏆 媒体分级配置")
     st.caption("输入媒体名称关键词，用逗号分隔")
     
-    tier1_input = st.text_area("Tier 1 (10分)", value="人民日报, 新华社, 36Kr", height=100)
-    tier2_input = st.text_area("Tier 2 (8分)", value="动脉网, 丁香园, 虎嗅", height=100)
-    # Tier 3 改为可输入
-    tier3_input = st.text_area("Tier 3 (5分)", value="新浪, 搜狐, 网易, 今日头条", height=100)
+    # 默认值已清空
+    tier1_input = st.text_area("Tier 1 (10分)", value="", placeholder="输入顶级媒体...", height=68)
+    tier2_input = st.text_area("Tier 2 (8分)", value="", placeholder="输入核心媒体...", height=68)
+    tier3_input = st.text_area("Tier 3 (5分)", value="", placeholder="输入大众/其他媒体...", height=68)
 
-    # 处理分级列表
     def parse_tiers(text):
         return [x.strip().lower() for x in text.split(',') if x.strip()]
     
@@ -191,35 +204,36 @@ with st.sidebar:
 
 st.title("📡 传播价值 AI 评分系统")
 
-# 顶部公式展示 (全中文)
+# 顶部公式展示 (布局优化：两行显示)
 with st.expander("查看核心算法公式", expanded=False):
+    # 第一行：总分
     st.latex(r'''
     \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}
     ''')
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown("**真需求**")
-        st.latex(r'''= 0.6 \times \text{信息匹配} + 0.4 \times \text{精准度}''')
-    with c2:
-        st.markdown("**获客效能**")
-        st.latex(r'''= \text{AI 评估获客力 (0-10)}''')
-    with c3:
-        st.markdown("**声量**")
-        st.latex(r'''= 0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级}''')
+    # 第二行：因子拆解 (合并显示以节省空间)
+    st.latex(r'''
+    \text{真需求} = (0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度}) 
+    \quad \bigg| \quad 
+    \text{声量} = (0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级})
+    ''')
+    st.caption("注：获客效能由 AI 基于项目描述直接打分 (0-10)")
 
 # 初始化引擎
 engine = ScorerEngine()
 
-# 标签页名称修改
+# 标签页
 tab1, tab2 = st.tabs(["📄 新闻稿评分", "📊 媒体报道评分"])
 
-# --- TAB 1: 新闻稿评分 ---
+# --- TAB 1 ---
 with tab1:
     st.info("上传新闻稿 Word 文档，AI 将预判核心信息传递情况。")
     uploaded_word = st.file_uploader("上传 .docx 文件", type=['docx'])
     
     if uploaded_word:
         if st.button("开始预检分析"):
+            if not project_key_message:
+                st.warning("⚠️ 建议在左侧填写【核心信息】，否则 AI 评分可能不准确。")
+            
             with st.spinner("AI 正在阅读文档..."):
                 try:
                     doc = Document(uploaded_word)
@@ -238,13 +252,11 @@ with tab1:
                         st.progress(acq/10)
                     
                     st.success("分析完成！")
-                    
                 except Exception as e:
                     st.error(f"解析错误: {e}")
 
-# --- TAB 2: 媒体报道评分 ---
+# --- TAB 2 ---
 with tab2:
-    # 移除了下载模板按钮和冗余提示
     uploaded_csv = st.file_uploader("上传媒体监测报表 (.csv)", type=['csv'])
 
     if uploaded_csv:
@@ -252,7 +264,7 @@ with tab2:
             df = pd.read_csv(uploaded_csv)
             df.columns = df.columns.str.strip()
             
-            # 依然保留代码层面的检查，防止报错，但去掉了UI上的文字提示
+            # 隐式检查列名，不报错给用户，只在后台处理
             required_cols = ['媒体名称', 'URL', '互动量', '浏览量']
             missing_cols = [col for col in required_cols if col not in df.columns]
             
@@ -271,12 +283,10 @@ with tab2:
                     for index, row in df.iterrows():
                         status_text.text(f"正在处理: {row['媒体名称']}...")
                         
-                        # 1. 声量计算
                         vol_quality = engine.calculate_volume_quality(row['浏览量'], row['互动量'])
                         tier_score = engine.get_media_tier_score(row['媒体名称'], tier_config)
                         volume_total = 0.6 * vol_quality + 0.4 * tier_score
                         
-                        # 2. 内容分析
                         content = engine.fetch_url_content(row['URL'])
                         
                         if content:
@@ -287,7 +297,6 @@ with tab2:
                             km_score, acq_score, prec_score = 0, 0, 0
                             msg = "URL Fail"
 
-                        # 3. 总分计算
                         true_demand = 0.6 * km_score + 0.4 * prec_score
                         total_score = (0.5 * true_demand) + (0.2 * acq_score) + (0.3 * volume_total)
 
@@ -298,11 +307,10 @@ with tab2:
                             "获客力": acq_score,
                             "声量": round(volume_total, 2),
                             "信息匹配": km_score,
-                            "精准度": prec_score,
+                            "受众精准度": prec_score, # 修正字段名
                             "媒体分级": tier_score,
                             "状态": msg
                         })
-                        
                         progress_bar.progress((index + 1) / total_rows)
 
                     status_text.text("分析完成！")
@@ -310,7 +318,6 @@ with tab2:
                     
                     st.divider()
                     
-                    # 结果展示区
                     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                     col_m1.metric("文章总数", len(res_df))
                     col_m2.metric("高价值 (≥8分)", len(res_df[res_df['总分'] >= 8]))
@@ -343,6 +350,3 @@ with tab2:
 
         except Exception as e:
             st.error(f"文件处理错误: {e}")
-
-        except Exception as e:
-            st.error(f"处理 CSV 时发生错误: {e}")
