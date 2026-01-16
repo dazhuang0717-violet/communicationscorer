@@ -20,100 +20,39 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. UI 强制浅色模式 (深度修复版) ---
+# --- 2. UI 强制浅色模式 ---
 st.markdown("""
     <style>
-        /* A. 全局容器强制白底黑字 */
-        [data-testid="stAppViewContainer"] {
-            background-color: #ffffff !important;
-            color: #31333F !important;
-        }
-        [data-testid="stSidebar"] {
-            background-color: #f8f9fa !important;
-            border-right: 1px solid #e0e0e0;
-        }
-        
-        /* B. 修复顶部导航栏和右上角按钮 */
-        header[data-testid="stHeader"] {
-            background-color: #ffffff !important;
-            border-bottom: 1px solid #f0f2f6;
-        }
-        header[data-testid="stHeader"] button, 
-        header[data-testid="stHeader"] a, 
-        header[data-testid="stHeader"] svg {
-            color: #31333F !important;
-            fill: #31333F !important;
-        }
-
-        /* C. 修复文件上传组件 */
-        [data-testid="stFileUploaderDropzone"] {
-            background-color: #f8f9fa !important;
-            border: 1px dashed #d1d5db !important;
-        }
-        [data-testid="stFileUploaderDropzone"] div, 
-        [data-testid="stFileUploaderDropzone"] span, 
-        [data-testid="stFileUploaderDropzone"] small,
-        [data-testid="stFileUploaderDropzone"] p {
-            color: #31333F !important;
-        }
-        [data-testid="stFileUploaderDropzone"] button {
-            background-color: #ffffff !important;
-            color: #31333F !important;
-            border: 1px solid #d1d5db !important;
-        }
-
-        /* D. 通用文本和输入框修复 */
-        h1, h2, h3, h4, h5, h6, p, span, div, label {
-            color: #31333F !important;
-        }
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] {
-            color: #31333F !important;
-            background-color: #ffffff !important;
-            border: 1px solid #d1d5db;
-        }
-        .stTextInput input:focus, .stTextArea textarea:focus {
-            border-color: #ff4b4b;
-        }
-        
-        /* E. 修复 Metric 指标和表格颜色 */
-        [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {
-            color: #31333F !important;
-        }
-        [data-testid="stDataFrame"] {
-            color: #31333F !important;
-        }
-        [data-testid="stDataFrame"] svg {
-             fill: #31333F !important;
-        }
-
-        /* F. 修复 Katex 公式颜色 (强制纯黑) */
-        .katex {
-            color: #000000 !important;
-        }
-        .katex-display {
-            color: #000000 !important;
-        }
-        .katex-html {
-            color: #000000 !important;
-        }
-
-        /* G. 隐藏元素 */
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        
-        .streamlit-expanderHeader {
-            background-color: #f0f2f6 !important;
-            color: #31333F !important;
-        }
-        .streamlit-expanderContent {
-            background-color: #ffffff !important;
-            color: #31333F !important;
-        }
+        [data-testid="stAppViewContainer"] { background-color: #ffffff !important; color: #31333F !important; }
+        [data-testid="stSidebar"] { background-color: #f8f9fa !important; border-right: 1px solid #e0e0e0; }
+        header[data-testid="stHeader"] { background-color: #ffffff !important; border-bottom: 1px solid #f0f2f6; }
+        header[data-testid="stHeader"] button, header[data-testid="stHeader"] a, header[data-testid="stHeader"] svg { color: #31333F !important; fill: #31333F !important; }
+        [data-testid="stFileUploaderDropzone"] { background-color: #f8f9fa !important; border: 1px dashed #d1d5db !important; }
+        [data-testid="stFileUploaderDropzone"] div, [data-testid="stFileUploaderDropzone"] span, [data-testid="stFileUploaderDropzone"] small, [data-testid="stFileUploaderDropzone"] p { color: #31333F !important; }
+        [data-testid="stFileUploaderDropzone"] button { background-color: #ffffff !important; color: #31333F !important; border: 1px solid #d1d5db !important; }
+        h1, h2, h3, h4, h5, h6, p, span, div, label { color: #31333F !important; }
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] { color: #31333F !important; background-color: #ffffff !important; border: 1px solid #d1d5db; }
+        .stTextInput input:focus, .stTextArea textarea:focus { border-color: #ff4b4b; }
+        [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { color: #31333F !important; }
+        [data-testid="stDataFrame"] { color: #31333F !important; }
+        [data-testid="stDataFrame"] svg { fill: #31333F !important; }
+        .katex { color: #000000 !important; }
+        .katex-display { color: #000000 !important; }
+        .katex-html { color: #000000 !important; }
+        #MainMenu { visibility: hidden; }
+        footer { visibility: hidden; }
+        .streamlit-expanderHeader { background-color: #f0f2f6 !important; color: #31333F !important; }
+        .streamlit-expanderContent { background-color: #ffffff !important; color: #31333F !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# 硬编码 API Key
-INTERNAL_API_KEY = "AIzaSyCe2xMF47EiUror-vHQ6k8Ih2NMgj7Cf68"
+# --- 核心安全逻辑：仅从 Secrets 读取 Key ---
+# 无论是在本地还是云端，代码里都不再保留任何 Key。
+# 如果读取失败，API 功能将暂时不可用，直到配置好 Secrets。
+try:
+    INTERNAL_API_KEY = st.secrets["GEMINI_API_KEY"]
+except:
+    INTERNAL_API_KEY = None
 
 # --- 3. 核心引擎 (Backend) ---
 
@@ -123,25 +62,17 @@ class ScorerEngine:
             genai.configure(api_key=INTERNAL_API_KEY)
 
     def read_docx_content(self, file_obj):
-        """增强版 Word 读取：同时读取段落和表格"""
         try:
             file_obj.seek(0)
             doc = Document(file_obj)
             full_text = []
-            
-            # 1. 读取段落
             for para in doc.paragraphs:
-                if para.text.strip():
-                    full_text.append(para.text.strip())
-            
-            # 2. 读取表格
+                if para.text.strip(): full_text.append(para.text.strip())
             for table in doc.tables:
                 for row in table.rows:
                     for cell in row.cells:
                         for para in cell.paragraphs:
-                            if para.text.strip():
-                                full_text.append(para.text.strip())
-            
+                            if para.text.strip(): full_text.append(para.text.strip())
             return "\n".join(full_text)
         except Exception as e:
             return f"Error: {str(e)}"
@@ -149,22 +80,18 @@ class ScorerEngine:
     def fetch_url_content(self, url):
         if not url or pd.isna(url): return ""
         if not str(url).startswith('http'): return ""
-
         try:
             jina_url = f"https://r.jina.ai/{url}"
             response = requests.get(jina_url, timeout=5)
-            if response.status_code == 200 and len(response.text) > 50:
-                return response.text[:10000]
+            if response.status_code == 200 and len(response.text) > 50: return response.text[:10000]
         except: pass 
-
         try:
             headers = {'User-Agent': 'Mozilla/5.0'}
             response = requests.get(url, headers=headers, timeout=5)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 text = " ".join([p.get_text() for p in soup.find_all('p')])
-                if len(text) > 50:
-                    return text[:10000]
+                if len(text) > 50: return text[:10000]
         except: pass
         return ""
 
@@ -193,7 +120,9 @@ class ScorerEngine:
         return 3
 
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
-        if not INTERNAL_API_KEY: return 0, 0, 0, "API Key Error: Key is missing"
+        # 安全检查：如果没有配置 Secrets，直接报错提示，而不是尝试连接
+        if not INTERNAL_API_KEY: 
+            return 0, 0, 0, "Configuration Error: API Key not found in Secrets."
         
         safe_km = key_message if key_message else "文章主题及核心观点"
         safe_desc = project_desc if project_desc else "一般性行业项目"
@@ -216,20 +145,12 @@ class ScorerEngine:
         3. audience_precision_score: 考虑到媒体和受众模式，受众精准度如何？
 
         【输出格式】
-        仅返回 JSON 字符串，不要包含 Markdown 格式:
+        仅返回 JSON 字符串:
         {{"km_score": 8, "acquisition_score": 7, "audience_precision_score": 9}}
         """
         
-        # --- 自动寻路逻辑 ---
-        candidate_models = [
-            'gemini-2.0-flash', 
-            'gemini-2.0-flash-lite-preview-02-05',
-            'gemini-2.5-flash',
-            'gemini-2.0-flash-exp',
-            'gemini-flash-latest'
-        ]
+        candidate_models = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash']
         
-        # --- JSON 提取助手 ---
         def extract_json(text):
             try: return json.loads(text)
             except: pass
@@ -244,33 +165,24 @@ class ScorerEngine:
             return None
 
         last_error = None
-        
         for model_name in candidate_models:
             try:
                 model = genai.GenerativeModel(model_name)
                 response = model.generate_content(prompt)
                 data = extract_json(response.text)
-                
                 if data:
-                    return (
-                        data.get('km_score', 0), 
-                        data.get('acquisition_score', 0), 
-                        data.get('audience_precision_score', 0), 
-                        "Success"
-                    )
+                    return (data.get('km_score', 0), data.get('acquisition_score', 0), data.get('audience_precision_score', 0), "Success")
                 else:
                     raise ValueError(f"JSON Parse Failed: {response.text[:50]}...")
             except Exception as e:
                 last_error = e
-                # 遇到 429 错误时尝试短暂等待
-                if "429" in str(e): 
-                    time.sleep(2)
+                if "429" in str(e): time.sleep(2)
                 continue
 
         error_msg = f"AI Error: All models failed. Last error: {str(last_error)}"
         return 0, 0, 0, error_msg
 
-# --- 4. 侧边栏 (Sidebar) ---
+# --- 4. 侧边栏 ---
 with st.sidebar:
     st.header("⚙️ 系统配置")
     st.subheader("📋 项目基础信息")
@@ -294,15 +206,16 @@ with st.sidebar:
         'tier3': parse_tiers(tier3_input)
     }
 
-# --- 5. 主界面 (Main) ---
+# 初始化引擎
+engine = ScorerEngine()
 
+# --- 5. 主界面 ---
 st.title("📡 传播价值 AI 评分系统")
 
 with st.expander("查看核心算法公式", expanded=False):
     st.latex(r'''\color{black} \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}''')
     st.latex(r'''\color{black} \text{真需求} = 0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度}, \quad \text{声量} = 0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级}''')
 
-engine = ScorerEngine()
 tab1, tab2 = st.tabs(["📄 新闻稿评分", "📊 媒体报道评分"])
 
 # --- TAB 1 ---
@@ -317,22 +230,24 @@ with tab1:
         st.success("✅ 文档已就绪")
         
         if st.button("开始分析", key="btn_word_analyze"):
-            if not project_key_message:
+            if not INTERNAL_API_KEY:
+                st.error("❌ 未检测到 API Key 配置。请在 Streamlit Secrets 或本地 .streamlit/secrets.toml 中配置 GEMINI_API_KEY。")
+            elif not project_key_message:
                 st.warning("⚠️ 请在左侧填写【核心信息】")
-            
-            with st.spinner("AI 正在阅读文档..."):
-                try:
-                    full_text = engine.read_docx_content(uploaded_word)
-                    if len(full_text.strip()) < 10:
-                        st.error(f"文档内容过少 (提取到 {len(full_text)} 字)，无法进行分析。")
-                        st.session_state.word_analysis_result = None
-                    else:
-                        km, acq, prec, status = engine.analyze_content_with_ai(
-                            full_text, project_key_message, project_desc, audience_mode, "内部稿件"
-                        )
-                        st.session_state.word_analysis_result = {"km": km, "status": status, "text_len": len(full_text)}
-                except Exception as e:
-                    st.error(f"解析错误: {e}")
+            else:
+                with st.spinner("AI 正在阅读文档..."):
+                    try:
+                        full_text = engine.read_docx_content(uploaded_word)
+                        if len(full_text.strip()) < 10:
+                            st.error(f"文档内容过少 (提取到 {len(full_text)} 字)，无法进行分析。")
+                            st.session_state.word_analysis_result = None
+                        else:
+                            km, acq, prec, status = engine.analyze_content_with_ai(
+                                full_text, project_key_message, project_desc, audience_mode, "内部稿件"
+                            )
+                            st.session_state.word_analysis_result = {"km": km, "status": status, "text_len": len(full_text)}
+                    except Exception as e:
+                        st.error(f"解析错误: {e}")
     
     if st.session_state.word_analysis_result:
         res = st.session_state.word_analysis_result
@@ -393,87 +308,89 @@ with tab2:
                 
                 st.markdown("---")
                 if st.button("开始分析", key="btn_xlsx_analyze"):
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    
-                    results = []
-                    total_rows = len(df)
-
-                    for index, row in df.iterrows():
-                        status_text.text(f"⏳ 正在分析第 {index}/{total_rows} 条: {row['媒体名称']}...")
+                    if not INTERNAL_API_KEY:
+                        st.error("❌ 未检测到 API Key。请确保已在本地配置 `.streamlit/secrets.toml` 或在云端配置 Secrets。")
+                    else:
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
                         
-                        vol_quality = engine.calculate_volume_quality(row['浏览量'], row['互动量'])
-                        tier_score = engine.get_media_tier_score(row['媒体名称'], tier_config)
-                        volume_total = 0.6 * vol_quality + 0.4 * tier_score
+                        results = []
+                        total_rows = len(df)
+
+                        for index, row in df.iterrows():
+                            status_text.text(f"⏳ 正在分析第 {index}/{total_rows} 条: {row['媒体名称']}...")
+                            
+                            vol_quality = engine.calculate_volume_quality(row['浏览量'], row['互动量'])
+                            tier_score = engine.get_media_tier_score(row['媒体名称'], tier_config)
+                            volume_total = 0.6 * vol_quality + 0.4 * tier_score
+                            
+                            content = engine.fetch_url_content(row['URL'])
+                            if not content and '标题' in df.columns and pd.notna(row['标题']):
+                                content = f"文章标题：{row['标题']}"
+                                msg_suffix = " (基于标题)"
+                            else:
+                                msg_suffix = ""
+
+                            if content:
+                                km_score, acq_score, prec_score, msg = engine.analyze_content_with_ai(
+                                    content, project_key_message, project_desc, audience_mode, row['媒体名称']
+                                )
+                                msg += msg_suffix
+                            else:
+                                km_score, acq_score, prec_score = 0, 0, 0
+                                msg = "URL Fail & No Title"
+
+                            true_demand = 0.6 * km_score + 0.4 * prec_score
+                            total_score = (0.5 * true_demand) + (0.2 * acq_score) + (0.3 * volume_total)
+
+                            results.append({
+                                "媒体名称": row['媒体名称'],
+                                "总分": round(total_score, 2),
+                                "真需求": round(true_demand, 2),
+                                "获客力": acq_score,
+                                "声量": round(volume_total, 2),
+                                "信息匹配": km_score,
+                                "受众精准度": prec_score, 
+                                "媒体分级": tier_score,
+                                "状态": msg
+                            })
+                            progress_bar.progress(index / total_rows)
+
+                        status_text.success("🎉 分析全部完成！")
+                        res_df = pd.DataFrame(results)
+                        res_df.index = range(1, len(res_df) + 1)
                         
-                        content = engine.fetch_url_content(row['URL'])
-                        if not content and '标题' in df.columns and pd.notna(row['标题']):
-                            content = f"文章标题：{row['标题']}"
-                            msg_suffix = " (基于标题)"
-                        else:
-                            msg_suffix = ""
+                        st.divider()
+                        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                        col_m1.metric("文章总数", len(res_df))
+                        col_m2.metric("高价值 (≥8分)", len(res_df[res_df['总分'] >= 8]))
+                        col_m3.metric("平均分", round(res_df['总分'].mean(), 2))
+                        col_m4.metric("中位数", round(res_df['总分'].median(), 2))
 
-                        if content:
-                            km_score, acq_score, prec_score, msg = engine.analyze_content_with_ai(
-                                content, project_key_message, project_desc, audience_mode, row['媒体名称']
-                            )
-                            msg += msg_suffix
-                        else:
-                            km_score, acq_score, prec_score = 0, 0, 0
-                            msg = "URL Fail & No Title"
+                        col_chart1, col_chart2 = st.columns([2, 1])
+                        with col_chart1:
+                            st.subheader("📊 得分排行")
+                            fig = px.bar(res_df.sort_values('总分', ascending=True), x='总分', y='媒体名称', orientation='h', color='总分', color_continuous_scale='Bluered')
+                            st.plotly_chart(fig, use_container_width=True)
+                        with col_chart2:
+                            st.subheader("声量 vs 需求")
+                            fig2 = px.scatter(res_df, x='声量', y='真需求', hover_name='媒体名称', size='总分', color='获客力')
+                            st.plotly_chart(fig2, use_container_width=True)
 
-                        true_demand = 0.6 * km_score + 0.4 * prec_score
-                        total_score = (0.5 * true_demand) + (0.2 * acq_score) + (0.3 * volume_total)
+                        st.subheader("📋 详细数据表")
+                        st.dataframe(res_df, use_container_width=True)
 
-                        results.append({
-                            "媒体名称": row['媒体名称'],
-                            "总分": round(total_score, 2),
-                            "真需求": round(true_demand, 2),
-                            "获客力": acq_score,
-                            "声量": round(volume_total, 2),
-                            "信息匹配": km_score,
-                            "受众精准度": prec_score, 
-                            "媒体分级": tier_score,
-                            "状态": msg
-                        })
-                        progress_bar.progress(index / total_rows)
-
-                    status_text.success("🎉 分析全部完成！")
-                    res_df = pd.DataFrame(results)
-                    res_df.index = range(1, len(res_df) + 1)
-                    
-                    st.divider()
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                    col_m1.metric("文章总数", len(res_df))
-                    col_m2.metric("高价值 (≥8分)", len(res_df[res_df['总分'] >= 8]))
-                    col_m3.metric("平均分", round(res_df['总分'].mean(), 2))
-                    col_m4.metric("中位数", round(res_df['总分'].median(), 2))
-
-                    col_chart1, col_chart2 = st.columns([2, 1])
-                    with col_chart1:
-                        st.subheader("📊 得分排行")
-                        fig = px.bar(res_df.sort_values('总分', ascending=True), x='总分', y='媒体名称', orientation='h', color='总分', color_continuous_scale='Bluered')
-                        st.plotly_chart(fig, use_container_width=True)
-                    with col_chart2:
-                        st.subheader("声量 vs 需求")
-                        fig2 = px.scatter(res_df, x='声量', y='真需求', hover_name='媒体名称', size='总分', color='获客力')
-                        st.plotly_chart(fig2, use_container_width=True)
-
-                    st.subheader("📋 详细数据表")
-                    st.dataframe(res_df, use_container_width=True)
-
-                    # 1. 导出 Excel (只保留这一个导出功能)
-                    buffer = io.BytesIO()
-                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        res_df.to_excel(writer, index=True)
-                    
-                    st.download_button(
-                        label="📥 导出结果 Excel",
-                        data=buffer.getvalue(),
-                        file_name="ai_scoring_report.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            res_df.to_excel(writer, index=True)
+                        
+                        st.download_button(
+                            label="📥 导出结果 Excel",
+                            data=buffer.getvalue(),
+                            file_name="ai_scoring_report.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
 
         except Exception as e:
             st.error(f"文件处理错误: {e}")
