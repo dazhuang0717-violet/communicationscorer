@@ -113,7 +113,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 硬编码 API Key
-INTERNAL_API_KEY = "AIzaSyCdz_GYYbJhSMtAL3vP_2_-TNTYX0bUt94"
+INTERNAL_API_KEY = "AIzaSyCe2xMF47EiUror-vHQ6k8Ih2NMgj7Cf68"
 
 # --- 3. 核心引擎 (Backend) ---
 
@@ -262,7 +262,9 @@ class ScorerEngine:
                     raise ValueError(f"JSON Parse Failed: {response.text[:50]}...")
             except Exception as e:
                 last_error = e
-                if "429" in str(e): time.sleep(2)
+                # 遇到 429 错误时尝试短暂等待
+                if "429" in str(e): 
+                    time.sleep(2)
                 continue
 
         error_msg = f"AI Error: All models failed. Last error: {str(last_error)}"
