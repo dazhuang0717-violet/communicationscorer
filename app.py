@@ -47,12 +47,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- 核心安全逻辑：仅从 Secrets 读取 Key ---
-# 无论是在本地还是云端，代码里都不再保留任何 Key。
-# 如果读取失败，API 功能将暂时不可用，直到配置好 Secrets。
 try:
     INTERNAL_API_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    INTERNAL_API_KEY = None
+    INTERNAL_API_KEY = "AIzaSyCe2xMF47EiUror-vHQ6k8Ih2NMgj7Cf68"
 
 # --- 3. 核心引擎 (Backend) ---
 
@@ -120,9 +118,9 @@ class ScorerEngine:
         return 3
 
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
-        # 安全检查：如果没有配置 Secrets，直接报错提示，而不是尝试连接
+        # 安全检查
         if not INTERNAL_API_KEY: 
-            return 0, 0, 0, "Configuration Error: API Key not found in Secrets."
+            return 0, 0, 0, "Configuration Error: API Key not found."
         
         safe_km = key_message if key_message else "文章主题及核心观点"
         safe_desc = project_desc if project_desc else "一般性行业项目"
@@ -149,7 +147,14 @@ class ScorerEngine:
         {{"km_score": 8, "acquisition_score": 7, "audience_precision_score": 9}}
         """
         
-        candidate_models = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash']
+        # --- 自动寻路逻辑 (更新版) ---
+        # 移除了 gemini-1.5-flash，加入了您 Key 明确支持的 2.5 系列
+        candidate_models = [
+            'gemini-2.5-flash',      # 首选：最新最快
+            'gemini-2.0-flash',      # 备选：稳定
+            'gemini-flash-latest',   # 通用别名
+            'gemini-2.5-pro'         # 高级备选
+        ]
         
         def extract_json(text):
             try: return json.loads(text)
@@ -176,7 +181,9 @@ class ScorerEngine:
                     raise ValueError(f"JSON Parse Failed: {response.text[:50]}...")
             except Exception as e:
                 last_error = e
-                if "429" in str(e): time.sleep(2)
+                # 遇到限流稍微等一下，遇到其他错误直接切模型
+                if "429" in str(e): 
+                    time.sleep(1)
                 continue
 
         error_msg = f"AI Error: All models failed. Last error: {str(last_error)}"
@@ -230,9 +237,7 @@ with tab1:
         st.success("✅ 文档已就绪")
         
         if st.button("开始分析", key="btn_word_analyze"):
-            if not INTERNAL_API_KEY:
-                st.error("❌ 未检测到 API Key 配置。请在 Streamlit Secrets 或本地 .streamlit/secrets.toml 中配置 GEMINI_API_KEY。")
-            elif not project_key_message:
+            if not project_key_message:
                 st.warning("⚠️ 请在左侧填写【核心信息】")
             else:
                 with st.spinner("AI 正在阅读文档..."):
@@ -309,7 +314,7 @@ with tab2:
                 st.markdown("---")
                 if st.button("开始分析", key="btn_xlsx_analyze"):
                     if not INTERNAL_API_KEY:
-                        st.error("❌ 未检测到 API Key。请确保已在本地配置 `.streamlit/secrets.toml` 或在云端配置 Secrets。")
+                        st.error("❌ 未检测到 API Key。请确保已配置。")
                     else:
                         progress_bar = st.progress(0)
                         status_text = st.empty()
