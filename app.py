@@ -138,7 +138,7 @@ class ScorerEngine:
 
         【任务】
         请分析并返回以下 3 个维度的分数（0-10分），并严格按照 JSON 格式返回：
-        1. km_score: 文本是否有效传递了核心信息？如果是标题且包含关键词，也可给高分。(0=无, 10=深度)
+        1. km_score: 文本是否有效传递了核心信息？(0=无, 10=深度)
         2. acquisition_score: 基于项目描述，这篇内容的获客吸引力如何？
         3. audience_precision_score: 考虑到媒体和受众模式，受众精准度如何？
 
@@ -148,7 +148,6 @@ class ScorerEngine:
         """
         
         # --- 自动寻路逻辑 (更新版) ---
-        # 移除了 gemini-1.5-flash，加入了您 Key 明确支持的 2.5 系列
         candidate_models = [
             'gemini-2.5-flash',      # 首选：最新最快
             'gemini-2.0-flash',      # 备选：稳定
