@@ -198,7 +198,7 @@ class ScorerEngine:
 with st.sidebar:
     st.header("⚙️ 系统配置")
     
-    api_key = st.text_input("🔑 Google API Key (直接填入)", value="")
+    api_key = st.text_input("🔑 Google API Key", value="")
 
     st.subheader("📋 项目基础信息")
     project_name = st.text_input("项目名称")
