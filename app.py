@@ -23,38 +23,50 @@ st.markdown("""
     <style>
         [data-testid="stAppViewContainer"] { background-color: #ffffff !important; color: #31333F !important; }
         [data-testid="stSidebar"] { background-color: #f8f9fa !important; border-right: 1px solid #e0e0e0; }
+        
         header[data-testid="stHeader"] { background-color: #ffffff !important; border-bottom: 1px solid #f0f2f6; }
         header[data-testid="stHeader"] button, header[data-testid="stHeader"] a, header[data-testid="stHeader"] svg { color: #31333F !important; fill: #31333F !important; }
-        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] { color: #31333F !important; background-color: #ffffff !important; border: 1px solid #d1d5db; }
-        .stTextInput input:focus, .stTextArea textarea:focus { border-color: #ff4b4b; }
+        
+        .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] { 
+            color: #31333F !important; 
+            background-color: #ffffff !important; 
+            border: 1px solid #d1d5db; 
+        }
+        
+        .stTextInput input:focus, .stTextArea textarea:focus { 
+            border-color: #1E88E5 !important; 
+            box-shadow: 0 0 0 1px #1E88E5 !important;
+        }
+        div[data-baseweb="select"] > div:focus-within {
+            border-color: #1E88E5 !important;
+        }
+
+        button[kind="primary"] {
+            background-color: #1E88E5 !important;
+            border-color: #1E88E5 !important;
+        }
+        button[kind="secondary"] {
+            border-color: #1E88E5 !important;
+            color: #1E88E5 !important;
+        }
+        
         [data-testid="stFileUploaderDropzone"] { background-color: #f8f9fa !important; border: 1px dashed #d1d5db !important; }
         [data-testid="stFileUploaderDropzone"] div, [data-testid="stFileUploaderDropzone"] span, [data-testid="stFileUploaderDropzone"] p { color: #31333F !important; }
+        
         [data-testid="stDataFrame"] { color: #31333F !important; }
         [data-testid="stDataFrame"] svg { fill: #31333F !important; }
+        
         #MainMenu { visibility: hidden; }
         footer { visibility: hidden; }
+        
         .stAlert { background-color: #f0fdf4 !important; border: 1px solid #bbf7d0 !important; color: #166534 !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 关键修复：安全的 API Key 获取逻辑 ---
-# 即使没有配置 Secrets，这里也会被 try-except 捕获，不会报错崩溃
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        is_key_from_secrets = True
-    else:
-        api_key = None
-        is_key_from_secrets = False
-except (FileNotFoundError, Exception):
-    # 如果没有 secrets.toml 文件或发生其他错误，平滑降级
-    api_key = None
-    is_key_from_secrets = False
-
 class ScorerEngine:
     def __init__(self, key):
         self.api_key = key
-        if self.api_key:
+        if self.api_key and str(self.api_key).strip():
             genai.configure(api_key=self.api_key)
 
     def read_docx_content(self, file_obj):
@@ -125,8 +137,8 @@ class ScorerEngine:
         你是一个专业的公关传播分析师。请严格按照以下规则对内容进行评分：
 
         【评分规则】
-        1. **信息匹配 (km_score)**: 请仔细阅读【待分析文本】，判断其是否有效传递了【核心传播信息】。如果文本是新闻稿，这是最重要的指标。
-        2. **获客效能 (acquisition_score)**: 基于【项目描述】，评估这篇内容对潜在客户的吸引力。
+        1. **信息匹配 (km_score)**: 请仔细阅读【待分析文本】，判断其是否有效传递了【核心传播信息】。
+        2. **获客效能 (acquisition_score)**: 基于【项目描述】，评估这个项目的获客效能。
         3. **受众精准度 (audience_precision_score)**: 仅根据【媒体名称】和【目标受众模式】进行判断。例如，如果是"HCP"模式但媒体是大众娱乐媒体，则分数应较低。
 
         【输入信息】
@@ -186,8 +198,7 @@ class ScorerEngine:
 with st.sidebar:
     st.header("⚙️ 系统配置")
     
-    if not is_key_from_secrets:
-        api_key_input = st.text_input("🔑 Google API Key", type="password")
+    api_key = st.text_input("🔑 Google API Key (直接填入)", value="")
 
     st.subheader("📋 项目基础信息")
     project_name = st.text_input("项目名称")
@@ -196,7 +207,7 @@ with st.sidebar:
     audience_mode = st.radio("目标受众模式", ["大众 (General)", "患者 (Patient)", "医疗专业人士 (HCP)"])
 
     st.markdown("---")
-    st.subheader("🏆 媒体分级配置")
+    st.subheader("🏆 媒体分级")
     st.caption("输入媒体名称，用逗号分隔")
     tier1_input = st.text_area("Tier 1 (10分)", value="", height=68)
     tier2_input = st.text_area("Tier 2 (8分)", value="", height=68)
@@ -393,19 +404,19 @@ with tab3:
     else:
         res_df = st.session_state.batch_results_df
         
-        st.subheader(f"📈 项目评分概览: {project_name if project_name else '未命名项目'}")
+        st.subheader(f"📈 项目评分: {project_name if project_name else '未命名项目'}")
         
         m1, m2, m3, m4 = st.columns(4)
         avg_score = res_df['项目总分'].mean()
-        m1.metric("项目平均总分", f"{avg_score:.2f}")
-        m2.metric("平均真需求", f"{res_df['真需求'].mean():.2f}")
-        m3.metric("平均获客效能", f"{res_df['获客效能'].mean():.2f}")
-        m4.metric("平均声量", f"{res_df['声量'].mean():.2f}")
+        m1.metric("项目总分", f"{avg_score:.2f}")
+        m2.metric("真需求", f"{res_df['真需求'].mean():.2f}")
+        m3.metric("获客效能", f"{res_df['获客效能'].mean():.2f}")
+        m4.metric("声量", f"{res_df['声量'].mean():.2f}")
         
         st.divider()
 
         st.subheader("📋 项目评分明细")
-        tab3_cols = ['媒体名称', '项目总分', '真需求', '获客效能', '声量小分']
+        tab3_cols = ['项目总分', '真需求', '获客效能', '声量']
         
         st.dataframe(res_df[tab3_cols], use_container_width=True)
 
@@ -414,7 +425,7 @@ with tab3:
             res_df.to_excel(writer, index=True)
         
         st.download_button(
-            label="📥 导出完整评分报告 (Excel)",
+            label="📥 导出评分报告 (Excel)",
             data=buffer.getvalue(),
             file_name=f"{project_name}_scoring_report.xlsx" if project_name else "scoring_report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
