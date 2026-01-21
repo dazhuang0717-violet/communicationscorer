@@ -61,7 +61,6 @@ st.markdown("""
         
         .stAlert { background-color: #f0fdf4 !important; border: 1px solid #bbf7d0 !important; color: #166534 !important; }
 
-        /* 修复 Tabs 选中颜色为蓝色 */
         .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
             border-bottom-color: #1E88E5 !important;
         }
@@ -335,7 +334,6 @@ with tab2:
                 df.index = range(1, len(df) + 1)
                 st.success(f"✅ 成功读取 {len(df)} 条数据，以下为预览:")
                 
-                # --- 修改点1：简化预览表格列 ---
                 preview_cols_candidates = ['标题', '媒体', '媒体类型', '浏览量', '互动量', '链接']
                 # 只显示文件里实际存在的列
                 actual_preview_cols = [c for c in preview_cols_candidates if c in df.columns]
@@ -415,16 +413,13 @@ with tab2:
         except Exception as e:
             st.error(f"文件处理错误: {e}")
 
-    # --- 修改点4 & 5：在 Tab2 底部显示结果和导出按钮 (独立于分析按钮，持久显示) ---
     if st.session_state.batch_results_df is not None:
         res_df = st.session_state.batch_results_df
         st.divider()
-        # --- 修改点2：标题改为“媒体报道评分” ---
         st.subheader("📋 媒体报道评分")
         tab2_cols = ['媒体名称', '媒体分级', '受众精准度', '传播质量', '声量']
         st.dataframe(res_df[tab2_cols], use_container_width=True)
         
-        # --- 修改点4：导出按钮移到这里 ---
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             res_df.to_excel(writer, index=True)
@@ -452,4 +447,3 @@ with tab3:
         m3.metric("获客效能", f"{res_df['获客效能'].mean():.2f}")
         m4.metric("声量", f"{res_df['声量'].mean():.2f}")
         
-        # --- 修改点3 & 5：移除了底部的项目评分明细和导出按钮 ---
