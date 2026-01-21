@@ -60,6 +60,17 @@ st.markdown("""
         footer { visibility: hidden; }
         
         .stAlert { background-color: #f0fdf4 !important; border: 1px solid #bbf7d0 !important; color: #166534 !important; }
+
+        /* 修复 Tabs 选中颜色为蓝色 */
+        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+            border-bottom-color: #1E88E5 !important;
+        }
+        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] p {
+            color: #1E88E5 !important;
+        }
+        div[data-baseweb="tab-highlight"] {
+            background-color: #1E88E5 !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
