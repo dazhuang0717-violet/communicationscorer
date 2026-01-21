@@ -66,6 +66,7 @@ st.markdown("""
         #MainMenu { visibility: hidden; }
         footer { visibility: hidden; }
         
+        /* 统一所有提示框为蓝色风格 */
         .stAlert { 
             background-color: #e3f2fd !important; 
             border: 1px solid #90caf9 !important; 
@@ -287,7 +288,7 @@ with tab1:
         st.session_state.word_analysis_result = None
 
     if uploaded_word:
-        st.success("✅ 文档已就绪")
+        st.info("✅ 文档已就绪")
         
         if st.button("开始分析", key="btn_word_analyze"):
             if not api_key:
@@ -381,7 +382,7 @@ with tab2:
                 st.error(f"⚠️ 文件缺少必要列: {missing_cols}")
             else:
                 df.index = range(1, len(df) + 1)
-                st.success(f"✅ 成功读取 {len(df)} 条数据，以下为预览:")
+                st.info(f"✅ 成功读取 {len(df)} 条数据，以下为预览:")
                 
                 preview_cols_candidates = ['标题', '媒体', '媒体类型', '浏览量', '互动量', '链接']
                 actual_preview_cols = [c for c in preview_cols_candidates if c in df.columns]
@@ -496,12 +497,12 @@ with tab3:
         m4.metric("声量", f"{res_df['声量'].mean():.2f}")
 
         st.divider()
-        st.subheader("📊 多维数据洞察")
+        st.subheader("📊 数据洞察")
 
         col_chart1, col_chart2 = st.columns(2)
 
         with col_chart1:
-            st.markdown("##### 🕸️ 项目能力雷达图")
+            st.markdown("##### 🕸️ 项目雷达")
             radar_categories = ['核心信息匹配', '获客效能', '受众精准度', '媒体分级', '传播质量']
             radar_values = [
                 res_df['核心信息匹配'].mean(),
@@ -531,7 +532,7 @@ with tab3:
             st.plotly_chart(fig_radar, use_container_width=True)
 
         with col_chart2:
-            st.markdown("##### 💠 传播价值矩阵 (真需求 vs 声量)")
+            st.markdown("##### 💠 传播矩阵 (真需求 vs 声量)")
             fig_scatter = px.scatter(
                 res_df,
                 x='声量',
@@ -545,7 +546,7 @@ with tab3:
             fig_scatter.update_layout(margin=dict(l=20, r=20, t=30, b=20))
             st.plotly_chart(fig_scatter, use_container_width=True)
 
-        st.markdown("##### 🏆 媒体贡献 TOP 榜单")
+        st.markdown("##### 🏆 媒体榜单")
         top_media = res_df.groupby('媒体名称')['项目总分'].mean().sort_values(ascending=False).head(10)
         fig_bar = px.bar(
             x=top_media.index,
