@@ -5,6 +5,7 @@ import google.generativeai as genai
 import requests
 from bs4 import BeautifulSoup
 import plotly.express as px
+import plotly.graph_objects as go
 from docx import Document
 import io
 import math
@@ -53,13 +54,23 @@ st.markdown("""
         [data-testid="stFileUploaderDropzone"] { background-color: #f8f9fa !important; border: 1px dashed #d1d5db !important; }
         [data-testid="stFileUploaderDropzone"] div, [data-testid="stFileUploaderDropzone"] span, [data-testid="stFileUploaderDropzone"] p { color: #31333F !important; }
         
-        [data-testid="stDataFrame"] { color: #31333F !important; }
+        [data-testid="stDataFrame"] { 
+            color: #000000 !important; 
+        }
         [data-testid="stDataFrame"] svg { fill: #31333F !important; }
+        
+        [data-testid="stDataFrame"] * {
+            font-family: "Microsoft YaHei", "PingFang SC", "Source Sans Pro", sans-serif !important;
+        }
         
         #MainMenu { visibility: hidden; }
         footer { visibility: hidden; }
         
-        .stAlert { background-color: #f0fdf4 !important; border: 1px solid #bbf7d0 !important; color: #166534 !important; }
+        .stAlert { 
+            background-color: #e3f2fd !important; 
+            border: 1px solid #90caf9 !important; 
+            color: #0d47a1 !important; 
+        }
 
         .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
             border-bottom-color: #1E88E5 !important;
@@ -146,8 +157,11 @@ class ScorerEngine:
         return 3
 
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
-        if not self.api_key: return 0, 0, 0, "API Key Missing"
+        if not self.api_key: return 0, 0, 0, "API Key Missing", "无评价"
         
+        if not content or len(str(content).strip()) < 10:
+             return 0, 0, 0, "内容过短/无效", "内容过短，无法生成评价"
+
         safe_km = key_message if key_message else "文章主题及核心观点"
         safe_desc = project_desc if project_desc else "一般性行业项目"
 
@@ -168,11 +182,12 @@ class ScorerEngine:
         {content[:3000]}... (内容截断)
 
         【输出任务】
-        请返回 JSON 格式的分数（0-10分），格式如下：
+        请返回 JSON 格式的分数（0-10分）以及一段简短评价，格式如下：
         {{
             "km_score": <分数>,
             "acquisition_score": <分数>,
-            "audience_precision_score": <分数>
+            "audience_precision_score": <分数>,
+            "comment": "简短评价：客观指出优缺点，概括性强，100字以内。"
         }}
         """
         
@@ -203,15 +218,25 @@ class ScorerEngine:
                 response = model.generate_content(prompt)
                 data = extract_json(response.text)
                 if data:
-                    return (data.get('km_score', 0), data.get('acquisition_score', 0), data.get('audience_precision_score', 0), "Success")
+                    return (
+                        data.get('km_score', 0), 
+                        data.get('acquisition_score', 0), 
+                        data.get('audience_precision_score', 0), 
+                        "Success",
+                        data.get('comment', 'AI 未返回评价')
+                    )
                 else:
                     raise ValueError(f"JSON Parse Failed: {response.text[:50]}...")
             except Exception as e:
                 last_error = e
-                if "429" in str(e): time.sleep(1)
+                if "429" in str(e): 
+                    time.sleep(1)
+                    continue
+                elif "400" in str(e) or "403" in str(e):
+                    break
                 continue
 
-        return 0, 0, 0, f"AI Failed ({str(last_error)})"
+        return 0, 0, 0, f"AI Failed ({str(last_error)})", "AI 调用失败"
 
 with st.sidebar:
     st.header("⚙️ 系统配置")
@@ -246,9 +271,9 @@ st.title("📡 肿瘤业务-传播价值 AI 评分系统")
 
 with st.expander("查看核心算法公式", expanded=False):
     st.markdown("""
-    <div style="text-align: center; font-size: 16px; color: #31333F;">
-        总分 = 0.5 × 真需求 + 0.2 × 获客效能 + 0.3 × 声量<br>
-        真需求 = 0.6 × 信息匹配 + 0.4 × 受众精准度 &nbsp;&nbsp;&nbsp; 声量 = 0.6 × 传播质量 + 0.4 × 媒体分级
+    <div style="text-align: center; font-size: 20px; line-height: 2.5; color: #31333F; background-color: #f8f9fa; padding: 20px; border-radius: 10px; font-family: sans-serif;">
+        <span style="font-weight: bold; color: #1E88E5;">总分</span> = 0.5 × 真需求 + 0.2 × 获客效能 + 0.3 × 声量<br>
+        <span style="font-weight: bold; color: #1E88E5;">真需求</span> = 0.6 × 信息匹配 + 0.4 × 受众精准度 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="font-weight: bold; color: #1E88E5;">声量</span> = 0.6 × 传播质量 + 0.4 × 媒体分级
     </div>
     """, unsafe_allow_html=True)
 
@@ -277,10 +302,15 @@ with tab1:
                             st.error(f"文档内容过少 (提取到 {len(full_text)} 字)，无法进行分析。")
                             st.session_state.word_analysis_result = None
                         else:
-                            km, acq, prec, status = engine.analyze_content_with_ai(
+                            km, acq, prec, status, comment = engine.analyze_content_with_ai(
                                 full_text, project_key_message, project_desc, audience_mode, "内部稿件"
                             )
-                            st.session_state.word_analysis_result = {"km": km, "status": status, "text_len": len(full_text)}
+                            st.session_state.word_analysis_result = {
+                                "km": km, 
+                                "status": status, 
+                                "text_len": len(full_text),
+                                "comment": comment
+                            }
                     except Exception as e:
                         st.error(f"解析错误: {e}")
     
@@ -290,7 +320,16 @@ with tab1:
         if res['km'] > 0:
             st.metric("核心信息匹配度", f"{res['km']}/10")
             st.progress(res['km']/10)
-            st.success(f"分析成功！(基于 {res['text_len']} 字文本分析)")
+            
+            st.success("分析成功！")
+            
+            st.markdown(f"""
+            <div style="background-color: #f0f8ff; padding: 15px; border-radius: 8px; border-left: 5px solid #1E88E5;">
+                <h4 style="color: #1E88E5; margin-top: 0;">💡 AI 简评</h4>
+                <p style="color: #31333F;">{res.get('comment', '暂无评价')}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
         else:
             st.error(f"评分失败 (0分)。\n原因: {res['status']}")
 
@@ -348,7 +387,8 @@ with tab2:
                 actual_preview_cols = [c for c in preview_cols_candidates if c in df.columns]
                 
                 if actual_preview_cols:
-                    st.dataframe(df[actual_preview_cols], use_container_width=True)
+                    preview_df = df[actual_preview_cols].copy()
+                    st.dataframe(preview_df, use_container_width=True)
                 else:
                     st.dataframe(df, use_container_width=True)
                 
@@ -386,7 +426,7 @@ with tab2:
                                 msg_suffix = " (基于标题)"
                             
                             if content:
-                                km_score, acq_score, prec_score, msg = engine.analyze_content_with_ai(
+                                km_score, acq_score, prec_score, msg, _ = engine.analyze_content_with_ai(
                                     content, project_key_message, project_desc, audience_mode, row['媒体名称']
                                 )
                                 msg += msg_suffix
@@ -454,3 +494,66 @@ with tab3:
         m2.metric("真需求", f"{res_df['真需求'].mean():.2f}")
         m3.metric("获客效能", f"{res_df['获客效能'].mean():.2f}")
         m4.metric("声量", f"{res_df['声量'].mean():.2f}")
+
+        st.divider()
+        st.subheader("📊 多维数据洞察")
+
+        col_chart1, col_chart2 = st.columns(2)
+
+        with col_chart1:
+            st.markdown("##### 🕸️ 项目能力雷达图")
+            radar_categories = ['核心信息匹配', '获客效能', '受众精准度', '媒体分级', '传播质量']
+            radar_values = [
+                res_df['核心信息匹配'].mean(),
+                res_df['获客效能'].mean(),
+                res_df['受众精准度'].mean(),
+                res_df['媒体分级'].mean(),
+                res_df['传播质量'].mean()
+            ]
+            
+            fig_radar = go.Figure()
+            fig_radar.add_trace(go.Scatterpolar(
+                r=radar_values,
+                theta=radar_categories,
+                fill='toself',
+                name='项目平均表现',
+                line_color='#1E88E5',
+                fillcolor='rgba(30, 136, 229, 0.3)'
+            ))
+            fig_radar.update_layout(
+                polar=dict(
+                    radialaxis=dict(visible=True, range=[0, 10])
+                ),
+                showlegend=False,
+                margin=dict(l=40, r=40, t=30, b=30),
+                height=350
+            )
+            st.plotly_chart(fig_radar, use_container_width=True)
+
+        with col_chart2:
+            st.markdown("##### 💠 传播价值矩阵 (真需求 vs 声量)")
+            fig_scatter = px.scatter(
+                res_df,
+                x='声量',
+                y='真需求',
+                color='项目总分',
+                hover_data=['媒体名称'],
+                size='项目总分', 
+                color_continuous_scale='Blues',
+                height=350
+            )
+            fig_scatter.update_layout(margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig_scatter, use_container_width=True)
+
+        st.markdown("##### 🏆 媒体贡献 TOP 榜单")
+        top_media = res_df.groupby('媒体名称')['项目总分'].mean().sort_values(ascending=False).head(10)
+        fig_bar = px.bar(
+            x=top_media.index,
+            y=top_media.values,
+            labels={'x': '媒体名称', 'y': '平均项目总分'},
+            color=top_media.values,
+            color_continuous_scale='Blues'
+        )
+        fig_bar.update_layout(showlegend=False, margin=dict(l=20, r=20, t=30, b=40), height=400)
+        fig_bar.update_traces(marker_color='#1E88E5')
+        st.plotly_chart(fig_bar, use_container_width=True)
