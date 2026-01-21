@@ -453,7 +453,7 @@ with tab2:
                             })
                             progress_bar.progress(index / total_rows)
 
-                        status_text.success("🎉 分析完成！")
+                        status_text.info("🎉 分析完成！")
                         
                         res_df = pd.DataFrame(results)
                         res_df.index = range(1, len(res_df) + 1)
@@ -532,7 +532,7 @@ with tab3:
             st.plotly_chart(fig_radar, use_container_width=True)
 
         with col_chart2:
-            st.markdown("##### 💠 传播矩阵 (真需求 vs 声量)")
+            st.markdown("##### 💠 传播价值矩阵")
             fig_scatter = px.scatter(
                 res_df,
                 x='声量',
@@ -551,7 +551,7 @@ with tab3:
         fig_bar = px.bar(
             x=top_media.index,
             y=top_media.values,
-            labels={'x': '媒体名称', 'y': '平均项目总分'},
+            labels={'x': '媒体名称', 'y': '平均总分'},
             color=top_media.values,
             color_continuous_scale='Blues'
         )
