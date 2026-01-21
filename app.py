@@ -61,6 +61,7 @@ st.markdown("""
         
         .stAlert { background-color: #f0fdf4 !important; border: 1px solid #bbf7d0 !important; color: #166534 !important; }
 
+        /* 修复 Tabs 选中颜色为蓝色 */
         .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
             border-bottom-color: #1E88E5 !important;
         }
@@ -69,6 +70,15 @@ st.markdown("""
         }
         div[data-baseweb="tab-highlight"] {
             background-color: #1E88E5 !important;
+        }
+        
+        /* 修复 Tabs 悬浮颜色为蓝色 */
+        .stTabs [data-baseweb="tab-list"] button:hover p {
+            color: #1E88E5 !important;
+        }
+        .stTabs [data-baseweb="tab-list"] button:hover {
+            color: #1E88E5 !important;
+            border-bottom-color: #1E88E5 !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -335,14 +345,12 @@ with tab2:
                 st.success(f"✅ 成功读取 {len(df)} 条数据，以下为预览:")
                 
                 preview_cols_candidates = ['标题', '媒体', '媒体类型', '浏览量', '互动量', '链接']
-                # 只显示文件里实际存在的列
                 actual_preview_cols = [c for c in preview_cols_candidates if c in df.columns]
                 
                 if actual_preview_cols:
-                    st.dataframe(df[actual_preview_cols].head(5), use_container_width=True)
+                    st.dataframe(df[actual_preview_cols], use_container_width=True)
                 else:
-                    # 如果指定的列都没有，就显示默认的前5行，防止空表
-                    st.dataframe(df.head(5), use_container_width=True)
+                    st.dataframe(df, use_container_width=True)
                 
                 st.markdown("---")
                 
@@ -446,4 +454,3 @@ with tab3:
         m2.metric("真需求", f"{res_df['真需求'].mean():.2f}")
         m3.metric("获客效能", f"{res_df['获客效能'].mean():.2f}")
         m4.metric("声量", f"{res_df['声量'].mean():.2f}")
-        
