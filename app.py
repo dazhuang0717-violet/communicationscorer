@@ -66,7 +66,6 @@ st.markdown("""
         #MainMenu { visibility: hidden; }
         footer { visibility: hidden; }
         
-        /* 统一所有提示框为蓝色风格 */
         .stAlert { 
             background-color: #e3f2fd !important; 
             border: 1px solid #90caf9 !important; 
@@ -238,6 +237,70 @@ class ScorerEngine:
                 continue
 
         return 0, 0, 0, f"AI Failed ({str(last_error)})", "AI 调用失败"
+
+# --- HTML 报告生成函数 ---
+def generate_html_report(project_name, metrics, charts, df_top):
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>{project_name} - 评分报告</title>
+        <style>
+            body {{ font-family: "Microsoft YaHei", sans-serif; padding: 40px; color: #333; }}
+            h1 {{ color: #1E88E5; border-bottom: 2px solid #1E88E5; padding-bottom: 10px; }}
+            h2 {{ color: #1E88E5; margin-top: 30px; }}
+            .metrics-container {{ display: flex; justify-content: space-between; margin-bottom: 30px; background: #f8f9fa; padding: 20px; border-radius: 8px; }}
+            .metric-box {{ text-align: center; }}
+            .metric-val {{ font-size: 24px; font-weight: bold; color: #1E88E5; }}
+            .metric-lbl {{ font-size: 14px; color: #666; }}
+            .chart-container {{ margin-bottom: 40px; page-break-inside: avoid; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #1E88E5; color: white; }}
+            tr:nth-child(even) {{ background-color: #f2f2f2; }}
+            @media print {{
+                .no-print {{ display: none; }}
+                body {{ padding: 0; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>📈 项目评分报告: {project_name}</h1>
+        
+        <div class="metrics-container">
+            <div class="metric-box"><div class="metric-val">{metrics['total']:.2f}</div><div class="metric-lbl">项目总分</div></div>
+            <div class="metric-box"><div class="metric-val">{metrics['demand']:.2f}</div><div class="metric-lbl">真需求</div></div>
+            <div class="metric-box"><div class="metric-val">{metrics['acquisition']:.2f}</div><div class="metric-lbl">获客效能</div></div>
+            <div class="metric-box"><div class="metric-val">{metrics['volume']:.2f}</div><div class="metric-lbl">声量</div></div>
+        </div>
+
+        <h2>📊 数据洞察</h2>
+        <div style="display: flex; flex-wrap: wrap;">
+            <div style="width: 50%; min-width: 300px;" class="chart-container">
+                <h3>项目能力雷达</h3>
+                {charts['radar']}
+            </div>
+            <div style="width: 50%; min-width: 300px;" class="chart-container">
+                <h3>传播价值矩阵</h3>
+                {charts['scatter']}
+            </div>
+        </div>
+        <div class="chart-container">
+            <h3>媒体贡献 TOP 榜单</h3>
+            {charts['bar']}
+        </div>
+
+        <h2>🏆 详细数据 (Top 10)</h2>
+        {df_top.to_html(index=False)}
+
+        <div class="no-print" style="margin-top: 40px; text-align: center; color: #888;">
+            <p>💡 提示: 请使用浏览器菜单 "文件" -> "打印" (或 Ctrl+P)，选择 "另存为 PDF"。</p>
+        </div>
+    </body>
+    </html>
+    """
+    return html_content
 
 with st.sidebar:
     st.header("⚙️ 系统配置")
@@ -491,15 +554,24 @@ with tab3:
         
         m1, m2, m3, m4 = st.columns(4)
         avg_score = res_df['项目总分'].mean()
-        m1.metric("项目总分", f"{avg_score:.2f}")
-        m2.metric("真需求", f"{res_df['真需求'].mean():.2f}")
-        m3.metric("获客效能", f"{res_df['获客效能'].mean():.2f}")
-        m4.metric("声量", f"{res_df['声量'].mean():.2f}")
+        metrics = {
+            'total': avg_score,
+            'demand': res_df['真需求'].mean(),
+            'acquisition': res_df['获客效能'].mean(),
+            'volume': res_df['声量'].mean()
+        }
+        
+        m1.metric("项目总分", f"{metrics['total']:.2f}")
+        m2.metric("真需求", f"{metrics['demand']:.2f}")
+        m3.metric("获客效能", f"{metrics['acquisition']:.2f}")
+        m4.metric("声量", f"{metrics['volume']:.2f}")
 
         st.divider()
         st.subheader("📊 数据洞察")
 
         col_chart1, col_chart2 = st.columns(2)
+        
+        charts = {}
 
         with col_chart1:
             st.markdown("##### 🕸️ 项目雷达")
@@ -530,9 +602,10 @@ with tab3:
                 height=350
             )
             st.plotly_chart(fig_radar, use_container_width=True)
+            charts['radar'] = fig_radar.to_html(full_html=False, include_plotlyjs='cdn')
 
         with col_chart2:
-            st.markdown("##### 💠 传播价值矩阵")
+            st.markdown("##### 💠 传播矩阵")
             fig_scatter = px.scatter(
                 res_df,
                 x='声量',
@@ -545,16 +618,38 @@ with tab3:
             )
             fig_scatter.update_layout(margin=dict(l=20, r=20, t=30, b=20))
             st.plotly_chart(fig_scatter, use_container_width=True)
+            charts['scatter'] = fig_scatter.to_html(full_html=False, include_plotlyjs='cdn')
 
         st.markdown("##### 🏆 媒体榜单")
-        top_media = res_df.groupby('媒体名称')['项目总分'].mean().sort_values(ascending=False).head(10)
+        top_media_series = res_df.groupby('媒体名称')['项目总分'].mean().sort_values(ascending=False).head(10)
         fig_bar = px.bar(
-            x=top_media.index,
-            y=top_media.values,
-            labels={'x': '媒体名称', 'y': '平均总分'},
-            color=top_media.values,
+            x=top_media_series.index,
+            y=top_media_series.values,
+            labels={'x': '媒体名称', 'y': '平均项目总分'},
+            color=top_media_series.values,
             color_continuous_scale='Blues'
         )
         fig_bar.update_layout(showlegend=False, margin=dict(l=20, r=20, t=30, b=40), height=400)
         fig_bar.update_traces(marker_color='#1E88E5')
         st.plotly_chart(fig_bar, use_container_width=True)
+        charts['bar'] = fig_bar.to_html(full_html=False, include_plotlyjs='cdn')
+        
+        st.divider()
+        
+        # 准备 Top 10 数据用于报告
+        df_top_for_report = res_df[['媒体名称', '项目总分', '真需求', '获客效能', '声量']].groupby('媒体名称').mean().sort_values(by='项目总分', ascending=False).head(10).reset_index()
+        
+        html_report = generate_html_report(
+            project_name if project_name else "未命名项目", 
+            metrics, 
+            charts, 
+            df_top_for_report
+        )
+        
+        st.download_button(
+            label="📥 下载项目评分报告",
+            data=html_report,
+            file_name=f"{project_name}_report_view.html" if project_name else "report_view.html",
+            mime="text/html",
+            type="primary"
+        )
