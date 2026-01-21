@@ -14,7 +14,7 @@ import time
 
 st.set_page_config(
     page_title="肿瘤业务-传播价值 AI 评分系统",
-    page_icon="🎗️",
+    page_icon="📡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -61,7 +61,6 @@ st.markdown("""
         
         .stAlert { background-color: #f0fdf4 !important; border: 1px solid #bbf7d0 !important; color: #166534 !important; }
 
-        /* 修复 Tabs 选中颜色为蓝色 */
         .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
             border-bottom-color: #1E88E5 !important;
         }
@@ -72,7 +71,6 @@ st.markdown("""
             background-color: #1E88E5 !important;
         }
         
-        /* 修复 Tabs 悬浮颜色为蓝色 */
         .stTabs [data-baseweb="tab-list"] button:hover p {
             color: #1E88E5 !important;
         }
@@ -248,8 +246,11 @@ st.title("📡 肿瘤业务-传播价值 AI 评分系统")
 
 with st.expander("查看核心算法公式", expanded=False):
     st.markdown("""
-    **总分** = 0.5 × **真需求** + 0.2 × **获客效能** + 0.3 × **声量** **真需求** = 0.6 × **信息匹配** + 0.4 × **受众精准度**， **声量** = 0.6 × **传播质量** + 0.4 × **媒体分级**
-    """)
+    <div style="text-align: center; font-size: 16px; color: #31333F;">
+        总分 = 0.5 × 真需求 + 0.2 × 获客效能 + 0.3 × 声量<br>
+        真需求 = 0.6 × 信息匹配 + 0.4 × 受众精准度 &nbsp;&nbsp;&nbsp; 声量 = 0.6 × 传播质量 + 0.4 × 媒体分级
+    </div>
+    """, unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["📄 新闻稿评分", "📊 媒体报道评分", "📈 项目评分"])
 
@@ -297,9 +298,7 @@ if 'batch_results_df' not in st.session_state:
     st.session_state.batch_results_df = None
 
 with tab2:
-    col_tip, col_btn = st.columns([3, 1])
-    with col_tip:
-        st.info("💡 微信公众号、视频号等封闭平台内容无法自动爬取，请在 Excel 中插入“正文”列并手动填入文章内容。")
+    st.info("💡 微信公众号、视频号等封闭平台内容无法自动爬取，请在 Excel 中插入“正文”列并手动填入文章内容。")
     
     uploaded_file = st.file_uploader("上传媒体监测报表", type=['xlsx', 'csv'])
 
