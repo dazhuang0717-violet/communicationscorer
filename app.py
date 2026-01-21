@@ -625,7 +625,7 @@ with tab3:
         fig_bar = px.bar(
             x=top_media_series.index,
             y=top_media_series.values,
-            labels={'x': '媒体名称', 'y': '平均项目总分'},
+            labels={'x': '媒体名称', 'y': '平均总分'},
             color=top_media_series.values,
             color_continuous_scale='Blues'
         )
