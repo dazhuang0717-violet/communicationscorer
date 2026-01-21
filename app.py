@@ -334,7 +334,17 @@ with tab2:
             else:
                 df.index = range(1, len(df) + 1)
                 st.success(f"✅ 成功读取 {len(df)} 条数据，以下为预览:")
-                st.dataframe(df.head(5), use_container_width=True)
+                
+                # --- 修改点1：简化预览表格列 ---
+                preview_cols_candidates = ['标题', '媒体', '媒体类型', '浏览量', '互动量', '链接']
+                # 只显示文件里实际存在的列
+                actual_preview_cols = [c for c in preview_cols_candidates if c in df.columns]
+                
+                if actual_preview_cols:
+                    st.dataframe(df[actual_preview_cols].head(5), use_container_width=True)
+                else:
+                    # 如果指定的列都没有，就显示默认的前5行，防止空表
+                    st.dataframe(df.head(5), use_container_width=True)
                 
                 st.markdown("---")
                 
@@ -401,13 +411,31 @@ with tab2:
                         res_df = pd.DataFrame(results)
                         res_df.index = range(1, len(res_df) + 1)
                         st.session_state.batch_results_df = res_df
-
-                        st.subheader("📋 媒体报道过程指标")
-                        tab2_cols = ['媒体名称', '媒体分级', '受众精准度', '传播质量', '声量']
-                        st.dataframe(res_df[tab2_cols], use_container_width=True)
-
+        
         except Exception as e:
             st.error(f"文件处理错误: {e}")
+
+    # --- 修改点4 & 5：在 Tab2 底部显示结果和导出按钮 (独立于分析按钮，持久显示) ---
+    if st.session_state.batch_results_df is not None:
+        res_df = st.session_state.batch_results_df
+        st.divider()
+        # --- 修改点2：标题改为“媒体报道评分” ---
+        st.subheader("📋 媒体报道评分")
+        tab2_cols = ['媒体名称', '媒体分级', '受众精准度', '传播质量', '声量']
+        st.dataframe(res_df[tab2_cols], use_container_width=True)
+        
+        # --- 修改点4：导出按钮移到这里 ---
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            res_df.to_excel(writer, index=True)
+        
+        st.download_button(
+            label="📥 导出评分报告 (Excel)",
+            data=buffer.getvalue(),
+            file_name=f"{project_name}_scoring_report.xlsx" if project_name else "scoring_report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary"
+        )
 
 with tab3:
     if st.session_state.batch_results_df is None:
@@ -424,21 +452,4 @@ with tab3:
         m3.metric("获客效能", f"{res_df['获客效能'].mean():.2f}")
         m4.metric("声量", f"{res_df['声量'].mean():.2f}")
         
-        st.divider()
-
-        st.subheader("📋 项目评分明细")
-        tab3_cols = ['项目总分', '真需求', '获客效能', '声量']
-        
-        st.dataframe(res_df[tab3_cols], use_container_width=True)
-
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            res_df.to_excel(writer, index=True)
-        
-        st.download_button(
-            label="📥 导出评分报告 (Excel)",
-            data=buffer.getvalue(),
-            file_name=f"{project_name}_scoring_report.xlsx" if project_name else "scoring_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary"
-        )
+        # --- 修改点3 & 5：移除了底部的项目评分明细和导出按钮 ---
