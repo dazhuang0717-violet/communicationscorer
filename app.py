@@ -187,21 +187,17 @@ with st.sidebar:
     st.header("⚙️ 系统配置")
     
     if not is_key_from_secrets:
-        api_key_input = st.text_input("🔑 Google API Key", type="password", help="请在此处粘贴您的 API Key")
-        if api_key_input:
-            api_key = api_key_input
-        else:
-            st.warning("⚠️ 请先输入 API Key 才能开始分析")
+        api_key_input = st.text_input("🔑 Google API Key", type="password")
 
     st.subheader("📋 项目基础信息")
-    project_name = st.text_input("项目名称", placeholder="请输入项目名称")
+    project_name = st.text_input("项目名称")
     project_key_message = st.text_input("核心信息 (Key Message)", value="")
     project_desc = st.text_area("项目描述 (用于评估获客)", value="", height=100)
     audience_mode = st.radio("目标受众模式", ["大众 (General)", "患者 (Patient)", "医疗专业人士 (HCP)"])
 
     st.markdown("---")
     st.subheader("🏆 媒体分级配置")
-    st.caption("输入媒体名称关键词，用逗号分隔")
+    st.caption("输入媒体名称，用逗号分隔")
     tier1_input = st.text_area("Tier 1 (10分)", value="", height=68)
     tier2_input = st.text_area("Tier 2 (8分)", value="", height=68)
     tier3_input = st.text_area("Tier 3 (5分)", value="", height=68)
@@ -226,7 +222,7 @@ with st.expander("查看核心算法公式", expanded=False):
 tab1, tab2, tab3 = st.tabs(["📄 新闻稿评分", "📊 媒体报道评分", "📈 项目评分"])
 
 with tab1:
-    st.info("上传新闻稿 Word 文档，AI 将预判核心信息传递情况。")
+    st.info("上传新闻稿 Word 文档，AI 将评价核心信息传递情况。")
     uploaded_word = st.file_uploader("上传 .docx 文件", type=['docx'])
     
     if 'word_analysis_result' not in st.session_state:
@@ -271,9 +267,9 @@ if 'batch_results_df' not in st.session_state:
 with tab2:
     col_tip, col_btn = st.columns([3, 1])
     with col_tip:
-        st.warning("💡 温馨提示：微信公众号、视频号等封闭平台内容无法自动爬取，请务必在 Excel/CSV 中插入名为“正文”或“Content”的列并手动填入文章内容，否则无法准确评分。")
+        st.warning("💡 微信公众号、视频号等封闭平台内容无法自动爬取，请在 Excel 中插入“正文”列并手动填入文章内容。")
     
-    uploaded_file = st.file_uploader("上传媒体监测报表 (.xlsx 或 .csv)", type=['xlsx', 'csv'])
+    uploaded_file = st.file_uploader("上传媒体监测报表", type=['xlsx', 'csv'])
 
     if uploaded_file:
         try:
@@ -378,7 +374,7 @@ with tab2:
                             })
                             progress_bar.progress(index / total_rows)
 
-                        status_text.success("🎉 分析完成！请切换到“项目评分”标签页查看完整结果。")
+                        status_text.success("🎉 分析完成！")
                         
                         res_df = pd.DataFrame(results)
                         res_df.index = range(1, len(res_df) + 1)
@@ -393,7 +389,7 @@ with tab2:
 
 with tab3:
     if st.session_state.batch_results_df is None:
-        st.info("👋 请先在“媒体报道评分”页面上传数据并完成分析，结果将在这里展示。")
+        st.info("👋 请先完成“新闻稿评分”和“媒体报道评分”。")
     else:
         res_df = st.session_state.batch_results_df
         
