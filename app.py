@@ -12,52 +12,50 @@ import json
 import re
 import time
 
-# --- 1. 页面配置 ---
 st.set_page_config(
-    page_title="传播价值 AI 评分系统",
-    page_icon="📊",
+    page_title="肿瘤业务-传播价值 AI 评分系统",
+    page_icon="🎗️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- 2. UI 强制浅色模式 ---
 st.markdown("""
     <style>
         [data-testid="stAppViewContainer"] { background-color: #ffffff !important; color: #31333F !important; }
         [data-testid="stSidebar"] { background-color: #f8f9fa !important; border-right: 1px solid #e0e0e0; }
         header[data-testid="stHeader"] { background-color: #ffffff !important; border-bottom: 1px solid #f0f2f6; }
         header[data-testid="stHeader"] button, header[data-testid="stHeader"] a, header[data-testid="stHeader"] svg { color: #31333F !important; fill: #31333F !important; }
-        [data-testid="stFileUploaderDropzone"] { background-color: #f8f9fa !important; border: 1px dashed #d1d5db !important; }
-        [data-testid="stFileUploaderDropzone"] div, [data-testid="stFileUploaderDropzone"] span, [data-testid="stFileUploaderDropzone"] small, [data-testid="stFileUploaderDropzone"] p { color: #31333F !important; }
-        [data-testid="stFileUploaderDropzone"] button { background-color: #ffffff !important; color: #31333F !important; border: 1px solid #d1d5db !important; }
-        h1, h2, h3, h4, h5, h6, p, span, div, label { color: #31333F !important; }
         .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] { color: #31333F !important; background-color: #ffffff !important; border: 1px solid #d1d5db; }
         .stTextInput input:focus, .stTextArea textarea:focus { border-color: #ff4b4b; }
-        [data-testid="stMetricValue"], [data-testid="stMetricLabel"] { color: #31333F !important; }
+        [data-testid="stFileUploaderDropzone"] { background-color: #f8f9fa !important; border: 1px dashed #d1d5db !important; }
+        [data-testid="stFileUploaderDropzone"] div, [data-testid="stFileUploaderDropzone"] span, [data-testid="stFileUploaderDropzone"] p { color: #31333F !important; }
         [data-testid="stDataFrame"] { color: #31333F !important; }
         [data-testid="stDataFrame"] svg { fill: #31333F !important; }
-        .katex { color: #000000 !important; }
-        .katex-display { color: #000000 !important; }
-        .katex-html { color: #000000 !important; }
         #MainMenu { visibility: hidden; }
         footer { visibility: hidden; }
-        .streamlit-expanderHeader { background-color: #f0f2f6 !important; color: #31333F !important; }
-        .streamlit-expanderContent { background-color: #ffffff !important; color: #31333F !important; }
+        .stAlert { background-color: #f0fdf4 !important; border: 1px solid #bbf7d0 !important; color: #166534 !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 核心安全逻辑：仅从 Secrets 读取 Key ---
+# --- 关键修复：安全的 API Key 获取逻辑 ---
+# 即使没有配置 Secrets，这里也会被 try-except 捕获，不会报错崩溃
 try:
-    INTERNAL_API_KEY = st.secrets["GEMINI_API_KEY"]
-except:
-    INTERNAL_API_KEY = "AIzaSyCe2xMF47EiUror-vHQ6k8Ih2NMgj7Cf68"
-
-# --- 3. 核心引擎 (Backend) ---
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        is_key_from_secrets = True
+    else:
+        api_key = None
+        is_key_from_secrets = False
+except (FileNotFoundError, Exception):
+    # 如果没有 secrets.toml 文件或发生其他错误，平滑降级
+    api_key = None
+    is_key_from_secrets = False
 
 class ScorerEngine:
-    def __init__(self):
-        if INTERNAL_API_KEY:
-            genai.configure(api_key=INTERNAL_API_KEY)
+    def __init__(self, key):
+        self.api_key = key
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
 
     def read_docx_content(self, file_obj):
         try:
@@ -118,41 +116,41 @@ class ScorerEngine:
         return 3
 
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
-        # 安全检查
-        if not INTERNAL_API_KEY: 
-            return 0, 0, 0, "Configuration Error: API Key not found."
+        if not self.api_key: return 0, 0, 0, "API Key Missing"
         
         safe_km = key_message if key_message else "文章主题及核心观点"
         safe_desc = project_desc if project_desc else "一般性行业项目"
 
         prompt = f"""
-        你是一个专业的公关传播分析师。请基于以下输入信息对一篇文章进行评分。
-        
+        你是一个专业的公关传播分析师。请严格按照以下规则对内容进行评分：
+
+        【评分规则】
+        1. **信息匹配 (km_score)**: 请仔细阅读【待分析文本】，判断其是否有效传递了【核心传播信息】。如果文本是新闻稿，这是最重要的指标。
+        2. **获客效能 (acquisition_score)**: 基于【项目描述】，评估这篇内容对潜在客户的吸引力。
+        3. **受众精准度 (audience_precision_score)**: 仅根据【媒体名称】和【目标受众模式】进行判断。例如，如果是"HCP"模式但媒体是大众娱乐媒体，则分数应较低。
+
         【输入信息】
-        1. 目标受众模式: {audience_mode}
-        2. 媒体名称: {media_name}
-        3. 核心传播信息 (Key Message): {safe_km}
-        4. 项目描述: {safe_desc}
-        5. 待分析文本: 
+        - 目标受众模式: {audience_mode}
+        - 媒体名称: {media_name}
+        - 核心传播信息 (Key Message): {safe_km}
+        - 项目描述: {safe_desc}
+        - 待分析文本: 
         {content[:3000]}... (内容截断)
 
-        【任务】
-        请分析并返回以下 3 个维度的分数（0-10分），并严格按照 JSON 格式返回：
-        1. km_score: 文本是否有效传递了核心信息？(0=无, 10=深度)
-        2. acquisition_score: 基于项目描述，这篇内容的获客吸引力如何？
-        3. audience_precision_score: 考虑到媒体和受众模式，受众精准度如何？
-
-        【输出格式】
-        仅返回 JSON 字符串:
-        {{"km_score": 8, "acquisition_score": 7, "audience_precision_score": 9}}
+        【输出任务】
+        请返回 JSON 格式的分数（0-10分），格式如下：
+        {{
+            "km_score": <分数>,
+            "acquisition_score": <分数>,
+            "audience_precision_score": <分数>
+        }}
         """
         
-        # --- 自动寻路逻辑 (更新版) ---
         candidate_models = [
-            'gemini-2.5-flash',      # 首选：最新最快
-            'gemini-2.0-flash',      # 备选：稳定
-            'gemini-flash-latest',   # 通用别名
-            'gemini-2.5-pro'         # 高级备选
+            'gemini-2.0-flash', 
+            'gemini-2.0-flash-lite-preview-02-05',
+            'gemini-2.5-flash',
+            'gemini-flash-latest'
         ]
         
         def extract_json(text):
@@ -180,18 +178,23 @@ class ScorerEngine:
                     raise ValueError(f"JSON Parse Failed: {response.text[:50]}...")
             except Exception as e:
                 last_error = e
-                # 遇到限流稍微等一下，遇到其他错误直接切模型
-                if "429" in str(e): 
-                    time.sleep(1)
+                if "429" in str(e): time.sleep(1)
                 continue
 
-        error_msg = f"AI Error: All models failed. Last error: {str(last_error)}"
-        return 0, 0, 0, error_msg
+        return 0, 0, 0, f"AI Failed ({str(last_error)})"
 
-# --- 4. 侧边栏 ---
 with st.sidebar:
     st.header("⚙️ 系统配置")
+    
+    if not is_key_from_secrets:
+        api_key_input = st.text_input("🔑 Google API Key", type="password", help="请在此处粘贴您的 API Key")
+        if api_key_input:
+            api_key = api_key_input
+        else:
+            st.warning("⚠️ 请先输入 API Key 才能开始分析")
+
     st.subheader("📋 项目基础信息")
+    project_name = st.text_input("项目名称", placeholder="请输入项目名称")
     project_key_message = st.text_input("核心信息 (Key Message)", value="")
     project_desc = st.text_area("项目描述 (用于评估获客)", value="", height=100)
     audience_mode = st.radio("目标受众模式", ["大众 (General)", "患者 (Patient)", "医疗专业人士 (HCP)"])
@@ -212,19 +215,16 @@ with st.sidebar:
         'tier3': parse_tiers(tier3_input)
     }
 
-# 初始化引擎
-engine = ScorerEngine()
+engine = ScorerEngine(api_key)
 
-# --- 5. 主界面 ---
-st.title("📡 传播价值 AI 评分系统")
+st.title("📡 肿瘤业务-传播价值 AI 评分系统")
 
 with st.expander("查看核心算法公式", expanded=False):
     st.latex(r'''\color{black} \text{总分} = 0.5 \times \text{真需求} + 0.2 \times \text{获客效能} + 0.3 \times \text{声量}''')
     st.latex(r'''\color{black} \text{真需求} = 0.6 \times \text{信息匹配} + 0.4 \times \text{受众精准度}, \quad \text{声量} = 0.6 \times \text{传播质量} + 0.4 \times \text{媒体分级}''')
 
-tab1, tab2 = st.tabs(["📄 新闻稿评分", "📊 媒体报道评分"])
+tab1, tab2, tab3 = st.tabs(["📄 新闻稿评分", "📊 媒体报道评分", "📈 项目评分"])
 
-# --- TAB 1 ---
 with tab1:
     st.info("上传新闻稿 Word 文档，AI 将预判核心信息传递情况。")
     uploaded_word = st.file_uploader("上传 .docx 文件", type=['docx'])
@@ -236,7 +236,9 @@ with tab1:
         st.success("✅ 文档已就绪")
         
         if st.button("开始分析", key="btn_word_analyze"):
-            if not project_key_message:
+            if not api_key:
+                st.error("❌ 请先在侧边栏输入 API Key")
+            elif not project_key_message:
                 st.warning("⚠️ 请在左侧填写【核心信息】")
             else:
                 with st.spinner("AI 正在阅读文档..."):
@@ -263,13 +265,24 @@ with tab1:
         else:
             st.error(f"评分失败 (0分)。\n原因: {res['status']}")
 
-# --- TAB 2 ---
+if 'batch_results_df' not in st.session_state:
+    st.session_state.batch_results_df = None
+
 with tab2:
-    uploaded_file = st.file_uploader("上传媒体监测报表 (.xlsx)", type=['xlsx'])
+    col_tip, col_btn = st.columns([3, 1])
+    with col_tip:
+        st.warning("💡 温馨提示：微信公众号、视频号等封闭平台内容无法自动爬取，请务必在 Excel/CSV 中插入名为“正文”或“Content”的列并手动填入文章内容，否则无法准确评分。")
+    
+    uploaded_file = st.file_uploader("上传媒体监测报表 (.xlsx 或 .csv)", type=['xlsx', 'csv'])
 
     if uploaded_file:
         try:
-            df = pd.read_excel(uploaded_file)
+            if uploaded_file.name.endswith('.csv'):
+                try: df = pd.read_csv(uploaded_file)
+                except: uploaded_file.seek(0); df = pd.read_csv(uploaded_file, encoding='gbk')
+            else:
+                df = pd.read_excel(uploaded_file)
+            
             df.columns = df.columns.str.strip()
 
             if '媒体' in df.columns and '媒体名称' not in df.columns: df['媒体名称'] = df['媒体']
@@ -299,25 +312,20 @@ with tab2:
             missing_cols = [col for col in required_cols if col not in df.columns]
             
             if missing_cols:
-                st.error(f"⚠️ Excel 缺少必要列。缺失: {missing_cols}")
-                st.info(f"当前列: {list(df.columns)}")
-                st.markdown("请确保文件包含 `媒体`、`链接`、`PV`(或浏览量) 等列。")
+                st.error(f"⚠️ 文件缺少必要列: {missing_cols}")
             else:
                 df.index = range(1, len(df) + 1)
-                st.success(f"✅ 成功读取 {len(df)} 条数据，以下为全量数据预览:")
-                
-                preview_cols = ['媒体名称', '标题'] if '标题' in df.columns else ['媒体名称']
-                preview_cols += ['URL', '浏览量', '互动量']
-                st.dataframe(df[preview_cols], use_container_width=True)
+                st.success(f"✅ 成功读取 {len(df)} 条数据，以下为预览:")
+                st.dataframe(df.head(5), use_container_width=True)
                 
                 st.markdown("---")
+                
                 if st.button("开始分析", key="btn_xlsx_analyze"):
-                    if not INTERNAL_API_KEY:
-                        st.error("❌ 未检测到 API Key。请确保已配置。")
+                    if not api_key:
+                        st.error("❌ 请先在侧边栏配置 API Key")
                     else:
                         progress_bar = st.progress(0)
                         status_text = st.empty()
-                        
                         results = []
                         total_rows = len(df)
 
@@ -328,13 +336,21 @@ with tab2:
                             tier_score = engine.get_media_tier_score(row['媒体名称'], tier_config)
                             volume_total = 0.6 * vol_quality + 0.4 * tier_score
                             
-                            content = engine.fetch_url_content(row['URL'])
+                            content = ""
+                            if '正文' in df.columns and pd.notna(row['正文']):
+                                content = str(row['正文'])
+                                msg_suffix = " (基于Excel文本)"
+                            elif 'Content' in df.columns and pd.notna(row['Content']):
+                                content = str(row['Content'])
+                                msg_suffix = " (基于Excel文本)"
+                            else:
+                                content = engine.fetch_url_content(row['URL'])
+                                msg_suffix = ""
+
                             if not content and '标题' in df.columns and pd.notna(row['标题']):
                                 content = f"文章标题：{row['标题']}"
                                 msg_suffix = " (基于标题)"
-                            else:
-                                msg_suffix = ""
-
+                            
                             if content:
                                 km_score, acq_score, prec_score, msg = engine.analyze_content_with_ai(
                                     content, project_key_message, project_desc, audience_mode, row['媒体名称']
@@ -342,59 +358,69 @@ with tab2:
                                 msg += msg_suffix
                             else:
                                 km_score, acq_score, prec_score = 0, 0, 0
-                                msg = "URL Fail & No Title"
+                                msg = "无内容"
 
                             true_demand = 0.6 * km_score + 0.4 * prec_score
                             total_score = (0.5 * true_demand) + (0.2 * acq_score) + (0.3 * volume_total)
 
                             results.append({
                                 "媒体名称": row['媒体名称'],
-                                "总分": round(total_score, 2),
+                                "项目总分": round(total_score, 2),
                                 "真需求": round(true_demand, 2),
-                                "获客力": acq_score,
+                                "获客效能": acq_score,
                                 "声量": round(volume_total, 2),
-                                "信息匹配": km_score,
+                                "声量小分": round(volume_total, 2),
+                                "核心信息匹配": km_score,
                                 "受众精准度": prec_score, 
                                 "媒体分级": tier_score,
+                                "传播质量": vol_quality,
                                 "状态": msg
                             })
                             progress_bar.progress(index / total_rows)
 
-                        status_text.success("🎉 分析全部完成！")
+                        status_text.success("🎉 分析完成！请切换到“项目评分”标签页查看完整结果。")
+                        
                         res_df = pd.DataFrame(results)
                         res_df.index = range(1, len(res_df) + 1)
-                        
-                        st.divider()
-                        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                        col_m1.metric("文章总数", len(res_df))
-                        col_m2.metric("高价值 (≥8分)", len(res_df[res_df['总分'] >= 8]))
-                        col_m3.metric("平均分", round(res_df['总分'].mean(), 2))
-                        col_m4.metric("中位数", round(res_df['总分'].median(), 2))
+                        st.session_state.batch_results_df = res_df
 
-                        col_chart1, col_chart2 = st.columns([2, 1])
-                        with col_chart1:
-                            st.subheader("📊 得分排行")
-                            fig = px.bar(res_df.sort_values('总分', ascending=True), x='总分', y='媒体名称', orientation='h', color='总分', color_continuous_scale='Bluered')
-                            st.plotly_chart(fig, use_container_width=True)
-                        with col_chart2:
-                            st.subheader("声量 vs 需求")
-                            fig2 = px.scatter(res_df, x='声量', y='真需求', hover_name='媒体名称', size='总分', color='获客力')
-                            st.plotly_chart(fig2, use_container_width=True)
-
-                        st.subheader("📋 详细数据表")
-                        st.dataframe(res_df, use_container_width=True)
-
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                            res_df.to_excel(writer, index=True)
-                        
-                        st.download_button(
-                            label="📥 导出结果 Excel",
-                            data=buffer.getvalue(),
-                            file_name="ai_scoring_report.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
+                        st.subheader("📋 媒体报道过程指标")
+                        tab2_cols = ['媒体名称', '媒体分级', '受众精准度', '传播质量', '声量']
+                        st.dataframe(res_df[tab2_cols], use_container_width=True)
 
         except Exception as e:
             st.error(f"文件处理错误: {e}")
+
+with tab3:
+    if st.session_state.batch_results_df is None:
+        st.info("👋 请先在“媒体报道评分”页面上传数据并完成分析，结果将在这里展示。")
+    else:
+        res_df = st.session_state.batch_results_df
+        
+        st.subheader(f"📈 项目评分概览: {project_name if project_name else '未命名项目'}")
+        
+        m1, m2, m3, m4 = st.columns(4)
+        avg_score = res_df['项目总分'].mean()
+        m1.metric("项目平均总分", f"{avg_score:.2f}")
+        m2.metric("平均真需求", f"{res_df['真需求'].mean():.2f}")
+        m3.metric("平均获客效能", f"{res_df['获客效能'].mean():.2f}")
+        m4.metric("平均声量", f"{res_df['声量'].mean():.2f}")
+        
+        st.divider()
+
+        st.subheader("📋 项目评分明细")
+        tab3_cols = ['媒体名称', '项目总分', '真需求', '获客效能', '声量小分']
+        
+        st.dataframe(res_df[tab3_cols], use_container_width=True)
+
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            res_df.to_excel(writer, index=True)
+        
+        st.download_button(
+            label="📥 导出完整评分报告 (Excel)",
+            data=buffer.getvalue(),
+            file_name=f"{project_name}_scoring_report.xlsx" if project_name else "scoring_report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary"
+        )
