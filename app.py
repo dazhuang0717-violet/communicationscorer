@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import google.generativeai as genai
+from openai import OpenAI
 import requests
 from bs4 import BeautifulSoup
 import plotly.express as px
@@ -95,8 +95,16 @@ st.markdown("""
 class ScorerEngine:
     def __init__(self, key):
         self.api_key = key
+        self.client = None
         if self.api_key and str(self.api_key).strip():
-            genai.configure(api_key=self.api_key)
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url="https://api.portkey.ai/v1",
+                default_headers={
+                    "x-portkey-provider": "google",
+                    "Content-Type": "application/json"
+                }
+            )
 
     def read_docx_content(self, file_obj):
         try:
@@ -157,7 +165,7 @@ class ScorerEngine:
         return 3
 
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
-        if not self.api_key: return 0, 0, 0, "API Key Missing", "无评价"
+        if not self.client: return 0, 0, 0, "API Key Missing", "无评价"
         
         if not content or len(str(content).strip()) < 10:
              return 0, 0, 0, "内容过短/无效", "内容过短，无法生成评价"
@@ -194,8 +202,8 @@ class ScorerEngine:
         candidate_models = [
             'gemini-2.0-flash', 
             'gemini-2.0-flash-lite-preview-02-05',
-            'gemini-2.5-flash',
-            'gemini-flash-latest'
+            'gemini-1.5-flash',
+            'gemini-1.5-pro'
         ]
         
         def extract_json(text):
@@ -214,9 +222,13 @@ class ScorerEngine:
         last_error = None
         for model_name in candidate_models:
             try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(prompt)
-                data = extract_json(response.text)
+                response = self.client.chat.completions.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"}
+                )
+                res_text = response.choices[0].message.content
+                data = extract_json(res_text)
                 if data:
                     return (
                         data.get('km_score', 0), 
@@ -226,7 +238,7 @@ class ScorerEngine:
                         data.get('comment', 'AI 未返回评价')
                     )
                 else:
-                    raise ValueError(f"JSON Parse Failed: {response.text[:50]}...")
+                    raise ValueError(f"JSON Parse Failed: {res_text[:50]}...")
             except Exception as e:
                 last_error = e
                 if "429" in str(e): 
@@ -238,7 +250,6 @@ class ScorerEngine:
 
         return 0, 0, 0, f"AI Failed ({str(last_error)})", "AI 调用失败"
 
-# --- HTML 报告生成函数 ---
 def generate_html_report(project_name, metrics, charts, df_top):
     html_content = f"""
     <!DOCTYPE html>
@@ -305,7 +316,7 @@ def generate_html_report(project_name, metrics, charts, df_top):
 with st.sidebar:
     st.header("⚙️ 系统配置")
     
-    api_key = st.text_input("🔑 Google API Key", value="")
+    api_key = st.text_input("🔑 Portkey API Key", value="", type="password")
 
     st.subheader("📋 项目基础信息")
     project_name = st.text_input("项目名称")
@@ -355,7 +366,7 @@ with tab1:
         
         if st.button("开始分析", key="btn_word_analyze"):
             if not api_key:
-                st.error("❌ 请先在侧边栏输入 API Key")
+                st.error("❌ 请先在侧边栏输入 Portkey API Key")
             elif not project_key_message:
                 st.warning("⚠️ 请在左侧填写【核心信息】")
             else:
@@ -460,7 +471,7 @@ with tab2:
                 
                 if st.button("开始分析", key="btn_xlsx_analyze"):
                     if not api_key:
-                        st.error("❌ 请先在侧边栏配置 API Key")
+                        st.error("❌ 请先在侧边栏配置 Portkey API Key")
                     else:
                         progress_bar = st.progress(0)
                         status_text = st.empty()
