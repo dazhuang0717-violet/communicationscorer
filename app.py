@@ -191,8 +191,10 @@ class ScorerEngine:
         
         candidate_models = [
             'gemini-2.0-flash', 
-            'gemini-2.0-flash-lite-preview-02-05',
-            'gemini-1.5-flash'
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-pro-latest',
+            'gemini-1.5-flash',
+            'gemini-1.5-pro'
         ]
         
         headers = {
@@ -235,6 +237,9 @@ class ScorerEngine:
                             "Success",
                             data.get('comment', 'AI 未返回评价')
                         )
+                elif response.status_code == 412:
+                    last_error = f"Model {model_name} not allowed"
+                    continue
                 else:
                     raise ValueError(f"HTTP {response.status_code}: {response.text}")
             except Exception as e:
@@ -244,7 +249,7 @@ class ScorerEngine:
                     continue
                 continue
 
-        return 0, 0, 0, f"AI Failed ({str(last_error)})", "AI 调用失败"
+        return 0, 0, 0, f"AI Failed ({str(last_error)})", "AI 调用失败，请检查 Portkey 权限"
 
 def generate_html_report(project_name, metrics, charts, df_top):
     html_content = f"""
