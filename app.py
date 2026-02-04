@@ -94,7 +94,7 @@ st.markdown("""
 class ScorerEngine:
     def __init__(self, key):
         self.api_key = key
-        self.portkey_url = "https://api.portkey.ai/v1/chat/completions"
+        self.portkey_url = "https://us.aigw.galileo.roche.com/v1/chat/completions"
 
     def read_docx_content(self, file_obj):
         try:
@@ -189,19 +189,11 @@ class ScorerEngine:
         }}
         """
         
-        candidate_models = [
-            'gemini-2.0-flash', 
-            'gemini-2.0-flash-lite-preview-02-05',
-            'gemini-1.5-flash-latest',
-            'gemini-1.5-pro-latest',
-            'gemini-1.5-flash',
-            'gemini-1.5-pro',
-            'gemini-pro'
-        ]
+        # 使用指定的网关模型
+        model_name = "@gemini/gemini-2.5-pro"
         
         headers = {
             "x-portkey-api-key": self.api_key,
-            "x-portkey-provider": "google",
             "Content-Type": "application/json"
         }
 
@@ -218,41 +210,36 @@ class ScorerEngine:
             except: pass
             return None
 
-        last_error = None
-        for model_name in candidate_models:
-            try:
-                payload = {
-                    "model": model_name,
-                    "messages": [{"role": "user", "content": prompt}]
-                }
-                response = requests.post(self.portkey_url, headers=headers, json=payload, timeout=30)
-                
-                if response.status_code == 200:
-                    res_json = response.json()
-                    res_text = res_json['choices'][0]['message']['content']
-                    data = extract_json(res_text)
-                    if data:
-                        return (
-                            data.get('km_score', 0), 
-                            data.get('acquisition_score', 0), 
-                            data.get('audience_precision_score', 0), 
-                            "Success",
-                            data.get('comment', 'AI 未返回评价')
-                        )
-                elif response.status_code == 412:
-                    last_error = f"Model '{model_name}' Not Allowed in Portkey Integration"
-                    continue
-                else:
-                    raise ValueError(f"HTTP {response.status_code}: {response.text}")
-            except Exception as e:
-                last_error = e
-                if "429" in str(e): 
-                    time.sleep(1)
-                    continue
-                continue
+        try:
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": "You are a professional PR analyst."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 1024
+            }
+            response = requests.post(self.portkey_url, headers=headers, json=payload, timeout=45)
+            
+            if response.status_code == 200:
+                res_json = response.json()
+                res_text = res_json['choices'][0]['message']['content']
+                data = extract_json(res_text)
+                if data:
+                    return (
+                        data.get('km_score', 0), 
+                        data.get('acquisition_score', 0), 
+                        data.get('audience_precision_score', 0), 
+                        "Success",
+                        data.get('comment', 'AI 未返回评价')
+                    )
+            else:
+                raise ValueError(f"HTTP {response.status_code}: {response.text}")
+        except Exception as e:
+            error_msg = f"AI Failed: {str(e)}"
+            return 0, 0, 0, error_msg, f"AI 调用失败，错误信息: {str(e)}"
 
-        error_msg = f"AI Failed: All candidate models disallowed by Portkey. Last error: {str(last_error)}"
-        return 0, 0, 0, error_msg, "AI 调用失败，请检查 Portkey Integrations 设置以允许 Gemini 模型"
+        return 0, 0, 0, "Unknown Error", "解析 AI 返回数据失败"
 
 def generate_html_report(project_name, metrics, charts, df_top):
     html_content = f"""
@@ -320,7 +307,7 @@ def generate_html_report(project_name, metrics, charts, df_top):
 with st.sidebar:
     st.header("⚙️ 系统配置")
     
-    api_key = st.text_input("🔑 Portkey API Key", value="", type="password")
+    api_key = st.text_input("🔑 Galileo API Key", value="", type="password")
 
     st.subheader("📋 项目基础信息")
     project_name = st.text_input("项目名称")
@@ -370,7 +357,7 @@ with tab1:
         
         if st.button("开始分析", key="btn_word_analyze"):
             if not api_key:
-                st.error("❌ 请先在侧边栏输入 Portkey API Key")
+                st.error("❌ 请先在侧边栏输入 Galileo API Key")
             elif not project_key_message:
                 st.warning("⚠️ 请在左侧填写【核心信息】")
             else:
@@ -475,7 +462,7 @@ with tab2:
                 
                 if st.button("开始分析", key="btn_xlsx_analyze"):
                     if not api_key:
-                        st.error("❌ 请先在侧边栏配置 Portkey API Key")
+                        st.error("❌ 请先在侧边栏配置 Galileo API Key")
                     else:
                         progress_bar = st.progress(0)
                         status_text = st.empty()
