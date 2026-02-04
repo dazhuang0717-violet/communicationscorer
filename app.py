@@ -191,10 +191,12 @@ class ScorerEngine:
         
         candidate_models = [
             'gemini-2.0-flash', 
+            'gemini-2.0-flash-lite-preview-02-05',
             'gemini-1.5-flash-latest',
             'gemini-1.5-pro-latest',
             'gemini-1.5-flash',
-            'gemini-1.5-pro'
+            'gemini-1.5-pro',
+            'gemini-pro'
         ]
         
         headers = {
@@ -238,7 +240,7 @@ class ScorerEngine:
                             data.get('comment', 'AI 未返回评价')
                         )
                 elif response.status_code == 412:
-                    last_error = f"Model {model_name} not allowed"
+                    last_error = f"Model '{model_name}' Not Allowed in Portkey Integration"
                     continue
                 else:
                     raise ValueError(f"HTTP {response.status_code}: {response.text}")
@@ -249,7 +251,8 @@ class ScorerEngine:
                     continue
                 continue
 
-        return 0, 0, 0, f"AI Failed ({str(last_error)})", "AI 调用失败，请检查 Portkey 权限"
+        error_msg = f"AI Failed: All candidate models disallowed by Portkey. Last error: {str(last_error)}"
+        return 0, 0, 0, error_msg, "AI 调用失败，请检查 Portkey Integrations 设置以允许 Gemini 模型"
 
 def generate_html_report(project_name, metrics, charts, df_top):
     html_content = f"""
