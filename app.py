@@ -189,9 +189,7 @@ class ScorerEngine:
         }}
         """
         
-        # 使用指定的网关模型
         model_name = "@gemini/gemini-2.5-pro"
-        
         headers = {
             "x-portkey-api-key": self.api_key,
             "Content-Type": "application/json"
@@ -210,36 +208,48 @@ class ScorerEngine:
             except: pass
             return None
 
-        try:
-            payload = {
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": "You are a professional PR analyst."},
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": 1024
-            }
-            response = requests.post(self.portkey_url, headers=headers, json=payload, timeout=45)
-            
-            if response.status_code == 200:
-                res_json = response.json()
-                res_text = res_json['choices'][0]['message']['content']
-                data = extract_json(res_text)
-                if data:
-                    return (
-                        data.get('km_score', 0), 
-                        data.get('acquisition_score', 0), 
-                        data.get('audience_precision_score', 0), 
-                        "Success",
-                        data.get('comment', 'AI 未返回评价')
-                    )
-            else:
-                raise ValueError(f"HTTP {response.status_code}: {response.text}")
-        except Exception as e:
-            error_msg = f"AI Failed: {str(e)}"
-            return 0, 0, 0, error_msg, f"AI 调用失败，错误信息: {str(e)}"
+        # 指数退避重试逻辑
+        retries = 5
+        delays = [1, 2, 4, 8, 16]
+        last_error = ""
 
-        return 0, 0, 0, "Unknown Error", "解析 AI 返回数据失败"
+        for i in range(retries):
+            try:
+                payload = {
+                    "model": model_name,
+                    "messages": [
+                        {"role": "system", "content": "You are a professional PR analyst."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "max_tokens": 1024
+                }
+                # 增加到 60s 超时以应对大型模型推理
+                response = requests.post(self.portkey_url, headers=headers, json=payload, timeout=60)
+                
+                if response.status_code == 200:
+                    res_json = response.json()
+                    res_text = res_json['choices'][0]['message']['content']
+                    data = extract_json(res_text)
+                    if data:
+                        return (
+                            data.get('km_score', 0), 
+                            data.get('acquisition_score', 0), 
+                            data.get('audience_precision_score', 0), 
+                            "Success",
+                            data.get('comment', 'AI 未返回评价')
+                        )
+                else:
+                    last_error = f"HTTP {response.status_code}: {response.text}"
+            except (requests.exceptions.RequestException, Exception) as e:
+                last_error = str(e)
+            
+            # 如果不是最后一次尝试，则等待后重试
+            if i < retries - 1:
+                time.sleep(delays[i])
+            else:
+                break
+
+        return 0, 0, 0, f"AI Failed after {retries} retries: {last_error}", f"AI 调用超时或连接失败。请确保您在 Roche 内部网络或已开启 VPN。详情: {last_error}"
 
 def generate_html_report(project_name, metrics, charts, df_top):
     html_content = f"""
