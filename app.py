@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import google.generativeai as genai
 import requests
 from bs4 import BeautifulSoup
 import plotly.express as px
@@ -95,8 +94,7 @@ st.markdown("""
 class ScorerEngine:
     def __init__(self, key):
         self.api_key = key
-        if self.api_key and str(self.api_key).strip():
-            genai.configure(api_key=self.api_key)
+        self.portkey_url = "https://api.portkey.ai/v1/chat/completions"
 
     def read_docx_content(self, file_obj):
         try:
@@ -157,7 +155,7 @@ class ScorerEngine:
         return 3
 
     def analyze_content_with_ai(self, content, key_message, project_desc, audience_mode, media_name):
-        if not self.api_key: return 0, 0, 0, "API Key Missing", "无评价"
+        if not self.api_key or not str(self.api_key).strip(): return 0, 0, 0, "API Key Missing", "无评价"
         
         if not content or len(str(content).strip()) < 10:
              return 0, 0, 0, "内容过短/无效", "内容过短，无法生成评价"
@@ -194,10 +192,15 @@ class ScorerEngine:
         candidate_models = [
             'gemini-2.0-flash', 
             'gemini-2.0-flash-lite-preview-02-05',
-            'gemini-2.5-flash',
-            'gemini-flash-latest'
+            'gemini-1.5-flash'
         ]
         
+        headers = {
+            "x-portkey-api-key": self.api_key,
+            "x-portkey-provider": "google",
+            "Content-Type": "application/json"
+        }
+
         def extract_json(text):
             try: return json.loads(text)
             except: pass
@@ -214,31 +217,35 @@ class ScorerEngine:
         last_error = None
         for model_name in candidate_models:
             try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(prompt)
-                data = extract_json(response.text)
-                if data:
-                    return (
-                        data.get('km_score', 0), 
-                        data.get('acquisition_score', 0), 
-                        data.get('audience_precision_score', 0), 
-                        "Success",
-                        data.get('comment', 'AI 未返回评价')
-                    )
+                payload = {
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                response = requests.post(self.portkey_url, headers=headers, json=payload, timeout=30)
+                
+                if response.status_code == 200:
+                    res_json = response.json()
+                    res_text = res_json['choices'][0]['message']['content']
+                    data = extract_json(res_text)
+                    if data:
+                        return (
+                            data.get('km_score', 0), 
+                            data.get('acquisition_score', 0), 
+                            data.get('audience_precision_score', 0), 
+                            "Success",
+                            data.get('comment', 'AI 未返回评价')
+                        )
                 else:
-                    raise ValueError(f"JSON Parse Failed: {response.text[:50]}...")
+                    raise ValueError(f"HTTP {response.status_code}: {response.text}")
             except Exception as e:
                 last_error = e
                 if "429" in str(e): 
                     time.sleep(1)
                     continue
-                elif "400" in str(e) or "403" in str(e):
-                    break
                 continue
 
         return 0, 0, 0, f"AI Failed ({str(last_error)})", "AI 调用失败"
 
-# --- HTML 报告生成函数 ---
 def generate_html_report(project_name, metrics, charts, df_top):
     html_content = f"""
     <!DOCTYPE html>
@@ -305,7 +312,7 @@ def generate_html_report(project_name, metrics, charts, df_top):
 with st.sidebar:
     st.header("⚙️ 系统配置")
     
-    api_key = st.text_input("🔑 Google API Key", value="")
+    api_key = st.text_input("🔑 Portkey API Key", value="", type="password")
 
     st.subheader("📋 项目基础信息")
     project_name = st.text_input("项目名称")
@@ -355,7 +362,7 @@ with tab1:
         
         if st.button("开始分析", key="btn_word_analyze"):
             if not api_key:
-                st.error("❌ 请先在侧边栏输入 API Key")
+                st.error("❌ 请先在侧边栏输入 Portkey API Key")
             elif not project_key_message:
                 st.warning("⚠️ 请在左侧填写【核心信息】")
             else:
@@ -460,7 +467,7 @@ with tab2:
                 
                 if st.button("开始分析", key="btn_xlsx_analyze"):
                     if not api_key:
-                        st.error("❌ 请先在侧边栏配置 API Key")
+                        st.error("❌ 请先在侧边栏配置 Portkey API Key")
                     else:
                         progress_bar = st.progress(0)
                         status_text = st.empty()
